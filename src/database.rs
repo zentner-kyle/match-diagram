@@ -181,13 +181,24 @@ mod tests {
     use predicate;
     use simple_query::SimpleQueryTerm;
 
-    fn insert_facts_run_query_expect_facts(input: &[Fact], query: SimpleQuery, expect: &[Fact]) {
+    fn insert_symbols_run_query_expect_rows(symbols: &[&[u64]], query: SimpleQuery, expected: &[usize]) {
+        let predicate = query.predicate;
+        let values: Vec<Vec<_>> = symbols.iter()
+            .map(|row|
+                row.iter().map(|&i| Value::Symbol(i)).collect())
+            .collect();
+        let facts: Vec<_> = values.iter().map(|vs| Fact { predicate, values: vs }).collect();
+        let expected: Vec<_> = expected.iter().map(|&i| Fact { predicate, values: &values[i] }).collect();
+        insert_facts_run_query_expect_facts(&facts, query, &expected);
+    }
+
+    fn insert_facts_run_query_expect_facts(input: &[Fact], query: SimpleQuery, expected: &[Fact]) {
         let mut db = Database::new();
         for fact in input {
             db.insert_fact(fact.clone());
         }
         let mut iter = db.simple_query(query);
-        for fact in expect {
+        for fact in expected {
             assert_eq!(Some(fact.clone()), iter.next());
         }
         assert_eq!(None, iter.next());
@@ -198,12 +209,7 @@ mod tests {
     fn can_query_single_fact_database() {
         let predicate = predicate::Predicate(0);
         let values = [[Value::Symbol(1), Value::Symbol(2)]];
-        let facts = [
-            Fact {
-                predicate,
-                values: &values[0],
-            },
-        ];
+        let facts: Vec<_> = values.iter().map(|vs| Fact { predicate, values: vs }).collect();
         let terms = &[SimpleQueryTerm::Free, SimpleQueryTerm::Free];
         let query = SimpleQuery { predicate, terms };
         insert_facts_run_query_expect_facts(&facts, query, &facts);
@@ -216,16 +222,7 @@ mod tests {
             [Value::Symbol(1), Value::Symbol(2)],
             [Value::Symbol(3), Value::Symbol(4)],
         ];
-        let facts = [
-            Fact {
-                predicate,
-                values: &values[0],
-            },
-            Fact {
-                predicate,
-                values: &values[1],
-            },
-        ];
+        let facts: Vec<_> = values.iter().map(|vs| Fact { predicate, values: vs }).collect();
         let terms = &[SimpleQueryTerm::Free, SimpleQueryTerm::Free];
         let query = SimpleQuery { predicate, terms };
         insert_facts_run_query_expect_facts(&facts, query, &facts);
@@ -234,40 +231,12 @@ mod tests {
     #[test]
     fn can_filter() {
         let predicate = predicate::Predicate(0);
-        let values = [
-            [Value::Symbol(1), Value::Symbol(2)],
-            [Value::Symbol(2), Value::Symbol(1)],
-            [Value::Symbol(1), Value::Symbol(3)],
-            [Value::Symbol(2), Value::Symbol(3)],
-        ];
-        let facts = [
-            Fact {
-                predicate,
-                values: &values[0],
-            },
-            Fact {
-                predicate,
-                values: &values[1],
-            },
-            Fact {
-                predicate,
-                values: &values[2],
-            },
-            Fact {
-                predicate,
-                values: &values[3],
-            },
-        ];
-        let expected = [
-            Fact {
-                predicate,
-                values: &values[0],
-            },
-            Fact {
-                predicate,
-                values: &values[2],
-            },
-        ];
+        let symbols: Vec<&[u64]> = [
+            [1, 2],
+            [2, 1],
+            [1, 3],
+            [2, 3],
+        ].iter().map(|s| &s[..]).collect();
         let terms = &[
             SimpleQueryTerm::Constant {
                 value: &Value::Symbol(1),
@@ -275,6 +244,29 @@ mod tests {
             SimpleQueryTerm::Free,
         ];
         let query = SimpleQuery { predicate, terms };
-        insert_facts_run_query_expect_facts(&facts, query, &expected);
+        insert_symbols_run_query_expect_rows(&symbols, query, &[0, 2]);
+    }
+
+    #[test]
+    fn can_filter_multiple_columns() {
+        let predicate = predicate::Predicate(0);
+        let symbols: Vec<&[u64]> = [
+            [1, 2, 1],
+            [2, 2, 2],
+            [1, 1, 3],
+            [2, 2, 4],
+            [1, 2, 5],
+        ].iter().map(|s| &s[..]).collect();
+        let terms = &[
+            SimpleQueryTerm::Constant {
+                value: &Value::Symbol(1),
+            },
+            SimpleQueryTerm::Constant {
+                value: &Value::Symbol(2),
+            },
+            SimpleQueryTerm::Free,
+        ];
+        let query = SimpleQuery { predicate, terms };
+        insert_symbols_run_query_expect_rows(&symbols, query, &[0, 4]);
     }
 }

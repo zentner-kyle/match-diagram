@@ -66,6 +66,8 @@ impl<'a> IndexIter<'a> {
                 return true;
             } else if row < next_row {
                 return false;
+            } else {
+                self.next();
             }
         }
         return false;
