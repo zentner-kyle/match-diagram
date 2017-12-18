@@ -4,10 +4,10 @@ use std::slice;
 use std::usize;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct NodeIndex(usize);
+pub struct NodeIndex(pub usize);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct EdgeIndex(usize);
+pub struct EdgeIndex(pub usize);
 
 const INVALID_NODE_INDEX: NodeIndex = NodeIndex(usize::MAX);
 
@@ -43,18 +43,27 @@ impl<N> FixGraph<N> {
     }
 
     fn edge_num_to_index(&self, node: NodeIndex, edge: EdgeIndex) -> usize {
-        (node.0 / self.edges_per_node) + edge.0
+        (node.0 * self.edges_per_node) + edge.0
     }
 
-    pub fn set_edge(&mut self, source: NodeIndex, edge: EdgeIndex, target: NodeIndex) {
-        if target.0 >= self.nodes.len() {
-            panic!("target is outside of this FixGraph");
-        }
+    pub fn set_edge_target(
+        &mut self,
+        source: NodeIndex,
+        edge: EdgeIndex,
+        target: Option<NodeIndex>,
+    ) {
         let idx = self.edge_num_to_index(source, edge);
-        self.edges[idx] = target;
+        if let Some(target) = target {
+            if target.0 >= self.nodes.len() {
+                panic!("target is outside of this FixGraph");
+            }
+            self.edges[idx] = target;
+        } else {
+            self.edges[idx] = INVALID_NODE_INDEX;
+        }
     }
 
-    pub fn get_edge(&self, source: NodeIndex, edge: EdgeIndex) -> Option<NodeIndex> {
+    pub fn get_edge_target(&self, source: NodeIndex, edge: EdgeIndex) -> Option<NodeIndex> {
         let idx = self.edge_num_to_index(source, edge);
         // This one shouldn't need to be checked.
         let node = self.edges[idx];
@@ -150,7 +159,7 @@ impl<'a, N: 'a> Iterator for Edges<'a, N> {
         if self.edge.0 >= self.graph.edges_per_node {
             None
         } else {
-            let result = self.graph.get_edge(self.node, self.edge);
+            let result = self.graph.get_edge_target(self.node, self.edge);
             self.edge = EdgeIndex(self.edge.0 + 1);
             Some(result)
         }
@@ -223,7 +232,7 @@ mod tests {
         let mut g = FixGraph::<i32>::with_capacity(0, 1);
         let zero = g.push(0);
         let one = g.push(1);
-        g.set_edge(zero, EdgeIndex(0), one);
-        assert_eq!(Some(one), g.get_edge(zero, EdgeIndex(0)));
+        g.set_edge_target(zero, EdgeIndex(0), Some(one));
+        assert_eq!(Some(one), g.get_edge_target(zero, EdgeIndex(0)));
     }
 }
