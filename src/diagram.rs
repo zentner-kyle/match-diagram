@@ -1,21 +1,32 @@
+#![allow(unused_imports)]
+use std::collections::HashSet;
+use std::iter;
+
 use database::Database;
 use fact::Fact;
 use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
 use predicate::Predicate;
+use registers::{RegisterFile, RegisterSet};
 use simple_query::{SimpleQuery, SimpleQueryTerm};
 use value::Value;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum MatchTerm {
-    Up { distance: usize, term: usize },
-    Constant { value: Value },
+struct MatchTerm {
+    constraint: MatchTermConstraint,
+    target: Option<usize>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+enum MatchTermConstraint {
+    Register(usize),
+    Constant(Value),
     Free,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 enum OutputTerm {
-    Up { distance: usize, term: usize },
-    Constant { value: Value },
+    Register(usize),
+    Constant(Value),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -30,99 +41,115 @@ enum Node {
     },
 }
 
+enum PropagateOutput {
+    Registers(RegisterSet, RegisterSet),
+    Database(Database),
+}
+
 #[derive(Clone, Debug)]
 struct Diagram {
+    num_registers: usize,
     graph: FixGraph<Node>,
 }
 
 impl Diagram {
-    pub fn new() -> Self {
+    pub fn new(num_registers: usize) -> Self {
         Diagram {
+            num_registers,
             graph: FixGraph::new(2),
         }
     }
 
-    pub fn evaluate(&self, database: &Database) -> Database {
-        let mut fact_stack = Vec::new();
-        self.evaluate_node(NodeIndex(0), database, &mut fact_stack)
-    }
-
-    pub fn evaluate_node<'a, 'b, 'c>(
-        &'a self,
+    fn propagate(
+        &self,
         node: NodeIndex,
-        database: &'b Database,
-        fact_stack: &'c mut Vec<Fact<'b>>,
-    ) -> Database {
-        let mut result = Database::new();
-        match self.graph.get_node(node) {
-            &Node::Match {
+        database: &Database,
+        registers: &RegisterSet,
+    ) -> PropagateOutput {
+        match *self.graph.get_node(node) {
+            Node::Match {
                 predicate,
                 ref terms,
             } => {
+                let mut match_set = RegisterSet::new(registers.num_registers());
+                let mut refute_set = RegisterSet::new(registers.num_registers());
                 let mut query_terms = Vec::with_capacity(terms.len());
-                for term in terms {
-                    query_terms.push(match term {
-                        &MatchTerm::Free => SimpleQueryTerm::Free,
-                        &MatchTerm::Constant { ref value } => SimpleQueryTerm::Constant { value },
-                        &MatchTerm::Up { distance, term } => {
-                            if distance > fact_stack.len() {
-                                return result;
+                for register_file in registers.iter() {
+                    for term in terms {
+                        query_terms.push(match &term.constraint {
+                            &MatchTermConstraint::Free => SimpleQueryTerm::Free,
+                            &MatchTermConstraint::Constant(ref value) => {
+                                SimpleQueryTerm::Constant { value }
                             }
-                            SimpleQueryTerm::Constant {
-                                value: &fact_stack[fact_stack.len() - distance].values[term],
+                            &MatchTermConstraint::Register(index) => {
+                                if index >= register_file.len() {
+                                    SimpleQueryTerm::Constant { value: &Value::Nil }
+                                } else {
+                                    if let Some(ref value) = register_file[index] {
+                                        SimpleQueryTerm::Constant { value }
+                                    } else {
+                                        SimpleQueryTerm::Free
+                                    }
+                                }
                             }
-                        }
-                    });
-                }
-                let mut query_iter = database
-                    .simple_query(SimpleQuery {
-                        predicate,
-                        terms: &query_terms,
-                    })
-                    .peekable();
-                if query_iter.peek().is_some() {
-                    if let Some(next_node) = self.get_on_match(node) {
+                        });
+                    }
+                    let mut query_iter = database
+                        .simple_query(SimpleQuery {
+                            predicate,
+                            terms: &query_terms,
+                        })
+                        .peekable();
+                    if query_iter.peek().is_some() {
                         for fact in query_iter {
-                            fact_stack.push(fact);
-                            let sub_result = self.evaluate_node(next_node, database, fact_stack);
-                            fact_stack.pop();
-                            for fact in sub_result.all_facts() {
-                                result.insert_fact(fact);
+                            let mut r = register_file.clone();
+                            for (term, value) in terms.iter().zip(fact.values.iter()) {
+                                if let Some(target) = term.target {
+                                    if target < r.len() {
+                                        r[target] = Some(value.clone());
+                                    }
+                                };
                             }
+                            match_set.push(r);
                         }
-                    };
-                } else {
-                    if let Some(next_node) = self.get_on_refute(node) {
-                        let sub_result = self.evaluate_node(next_node, database, fact_stack);
-                        for fact in sub_result.all_facts() {
-                            result.insert_fact(fact);
-                        }
-                    };
+                    } else {
+                        refute_set.push(register_file.clone());
+                    }
+                    query_terms.clear();
                 }
+                PropagateOutput::Registers(match_set, refute_set)
             }
-            &Node::Output {
+            Node::Output {
                 predicate,
                 ref terms,
             } => {
-                let mut values = Vec::with_capacity(terms.len());
-                for term in terms {
-                    values.push(match term {
-                        &OutputTerm::Constant { ref value } => value.clone(),
-                        &OutputTerm::Up { distance, term } => {
-                            if distance > fact_stack.len() {
-                                return result;
+                let mut result_db = Database::new();
+                for register_file in registers.iter() {
+                    let mut values = Vec::with_capacity(terms.len());
+                    for term in terms {
+                        match *term {
+                            OutputTerm::Constant(ref value) => {
+                                values.push(value.clone());
                             }
-                            fact_stack[fact_stack.len() - distance].values[term].clone()
+                            OutputTerm::Register(index) => {
+                                if index < register_file.len() {
+                                    if let Some(ref value) = register_file[index] {
+                                        values.push(value.clone());
+                                    } else {
+                                        values.push(Value::Nil);
+                                    }
+                                }
+                            }
                         }
+                    }
+                    result_db.insert_fact(Fact {
+                        predicate,
+                        values: &values[..],
                     });
                 }
-                result.insert_fact(Fact {
-                    predicate,
-                    values: &values,
-                });
+                PropagateOutput::Database(result_db)
             }
         }
-        return result;
     }
 
     pub fn insert_node(&mut self, node: Node) -> NodeIndex {
@@ -160,6 +187,88 @@ impl Diagram {
     pub fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
         self.graph.get_edge_target(src, EdgeIndex(0))
     }
+
+    pub fn len(&self) -> usize {
+        self.graph.len()
+    }
+
+    pub fn evaluate(&self, input: &Database) -> Database {
+        Evaluation::run(self, input, self.num_registers).total_db
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Evaluation {
+    input_sets: Vec<RegisterSet>,
+    output_sets: Vec<(RegisterSet, RegisterSet)>,
+    output_dbs: Vec<Option<Database>>,
+    total_db: Database,
+}
+
+impl Evaluation {
+    fn run(diagram: &Diagram, input: &Database, num_registers: usize) -> Self {
+        let mut input_sets: Vec<RegisterSet> = iter::repeat(RegisterSet::new(num_registers))
+            .take(diagram.len())
+            .collect();
+        let mut output_sets: Vec<(RegisterSet, RegisterSet)> = iter::repeat((
+            RegisterSet::new(num_registers),
+            RegisterSet::new(num_registers),
+        )).take(diagram.len())
+            .collect();
+        input_sets[0].push(RegisterFile::new(num_registers));
+        let mut output_dbs: Vec<_> = iter::repeat(None).take(diagram.len()).collect();
+        let mut pending_nodes = vec![NodeIndex(0)];
+        while let Some(node_index) = pending_nodes.pop() {
+            match diagram.propagate(node_index, input, &input_sets[node_index.0]) {
+                PropagateOutput::Registers(match_set, refute_set) => {
+                    let (ref mut old_match_set, ref mut old_refute_set) = output_sets[node_index.0];
+                    if *old_match_set != match_set {
+                        for registers in match_set.iter() {
+                            old_match_set.push(registers.clone());
+                        }
+                        if let Some(match_node) = diagram.get_on_match(node_index) {
+                            let input_sets = &mut input_sets[match_node.0];
+                            for registers in match_set.iter() {
+                                input_sets.push(registers.clone());
+                            }
+                            if !pending_nodes.contains(&match_node) {
+                                pending_nodes.push(match_node);
+                            }
+                        }
+                    }
+                    if *old_refute_set != refute_set {
+                        for registers in refute_set.iter() {
+                            old_refute_set.push(registers.clone());
+                        }
+                        if let Some(refute_node) = diagram.get_on_refute(node_index) {
+                            let input_sets = &mut input_sets[refute_node.0];
+                            for registers in refute_set.iter() {
+                                input_sets.push(registers.clone());
+                            }
+                            if !pending_nodes.contains(&refute_node) {
+                                pending_nodes.push(refute_node);
+                            }
+                        }
+                    }
+                }
+                PropagateOutput::Database(db) => {
+                    output_dbs[node_index.0] = Some(db);
+                }
+            }
+        }
+        let mut total_db = Database::new();
+        for db in output_dbs.iter().filter_map(|db| db.as_ref()) {
+            for fact in db.all_facts() {
+                total_db.insert_fact(fact);
+            }
+        }
+        Evaluation {
+            input_sets,
+            output_sets,
+            output_dbs,
+            total_db,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -168,16 +277,12 @@ mod tests {
 
     #[test]
     fn can_evaluate_constant_diagram() {
-        let mut diagram = Diagram::new();
+        let mut diagram = Diagram::new(0);
         let output_node = Node::Output {
             predicate: Predicate(0),
             terms: vec![
-                OutputTerm::Constant {
-                    value: Value::Symbol(1),
-                },
-                OutputTerm::Constant {
-                    value: Value::Symbol(2),
-                },
+                OutputTerm::Constant(Value::Symbol(1)),
+                OutputTerm::Constant(Value::Symbol(2)),
             ],
         };
         diagram.insert_node(output_node);
@@ -197,23 +302,23 @@ mod tests {
 
     #[test]
     fn can_evaluate_copying_diagram() {
-        let mut diagram = Diagram::new();
+        let mut diagram = Diagram::new(2);
         let match_anything_node = Node::Match {
             predicate: Predicate(0),
-            terms: vec![MatchTerm::Free, MatchTerm::Free],
+            terms: vec![
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(0),
+                },
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
+            ],
         };
         let output_node = Node::Output {
             predicate: Predicate(1),
-            terms: vec![
-                OutputTerm::Up {
-                    distance: 1,
-                    term: 0,
-                },
-                OutputTerm::Up {
-                    distance: 1,
-                    term: 1,
-                },
-            ],
+            terms: vec![OutputTerm::Register(0), OutputTerm::Register(1)],
         };
         let root = diagram.insert_node(match_anything_node);
         assert_eq!(root, NodeIndex(0));
@@ -240,28 +345,23 @@ mod tests {
 
     #[test]
     fn can_evaluate_filtering_diagram() {
-        let mut diagram = Diagram::new();
+        let mut diagram = Diagram::new(2);
         let match_ones_node = Node::Match {
             predicate: Predicate(0),
             terms: vec![
-                MatchTerm::Constant {
-                    value: Value::Symbol(1),
+                MatchTerm {
+                    constraint: MatchTermConstraint::Constant(Value::Symbol(1)),
+                    target: Some(0),
                 },
-                MatchTerm::Free,
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
             ],
         };
         let output_node = Node::Output {
             predicate: Predicate(1),
-            terms: vec![
-                OutputTerm::Up {
-                    distance: 1,
-                    term: 0,
-                },
-                OutputTerm::Up {
-                    distance: 1,
-                    term: 1,
-                },
-            ],
+            terms: vec![OutputTerm::Register(0), OutputTerm::Register(1)],
         };
         let root = diagram.insert_node(match_ones_node);
         assert_eq!(root, NodeIndex(0));
@@ -286,53 +386,56 @@ mod tests {
             database.insert_fact(input_fact);
         }
         let result_database = diagram.evaluate(&database);
-        let mut result_facts = result_database.all_facts();
+        let result_facts: HashSet<_> = result_database.all_facts().collect();
         assert_eq!(
-            result_facts.next(),
-            Some(Fact {
-                predicate: Predicate(1),
-                values: &[Value::Symbol(1), Value::Symbol(2),],
-            })
+            result_facts,
+            [
+                Fact {
+                    predicate: Predicate(1),
+                    values: &[Value::Symbol(1), Value::Symbol(2),],
+                },
+                Fact {
+                    predicate: Predicate(1),
+                    values: &[Value::Symbol(1), Value::Symbol(3),],
+                }
+            ].iter()
+                .cloned()
+                .collect()
         );
-        assert_eq!(
-            result_facts.next(),
-            Some(Fact {
-                predicate: Predicate(1),
-                values: &[Value::Symbol(1), Value::Symbol(3),],
-            })
-        );
-        assert_eq!(result_facts.next(), None);
-        assert_eq!(result_facts.next(), None);
     }
 
     #[test]
     fn can_evaluate_nested_filtering_diagram() {
-        let mut diagram = Diagram::new();
+        let mut diagram = Diagram::new(2);
         let match_ones_node = Node::Match {
             predicate: Predicate(0),
             terms: vec![
-                MatchTerm::Constant {
-                    value: Value::Symbol(1),
+                MatchTerm {
+                    constraint: MatchTermConstraint::Constant(Value::Symbol(1)),
+                    target: Some(0),
                 },
-                MatchTerm::Free,
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
             ],
         };
         let match_anything_node = Node::Match {
             predicate: Predicate(0),
-            terms: vec![MatchTerm::Free, MatchTerm::Free],
+            terms: vec![
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: None,
+                },
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
+            ],
         };
         let output_node = Node::Output {
             predicate: Predicate(1),
-            terms: vec![
-                OutputTerm::Up {
-                    distance: 2,
-                    term: 0,
-                },
-                OutputTerm::Up {
-                    distance: 1,
-                    term: 1,
-                },
-            ],
+            terms: vec![OutputTerm::Register(0), OutputTerm::Register(1)],
         };
         let root = diagram.insert_node(match_ones_node);
         let anything = diagram.insert_node(match_anything_node);
@@ -358,31 +461,25 @@ mod tests {
             database.insert_fact(input_fact);
         }
         let result_database = diagram.evaluate(&database);
-        let mut result_facts = result_database.all_facts();
-        for _ in 0..2 {
-            assert_eq!(
-                result_facts.next(),
-                Some(Fact {
+        let result_facts: HashSet<_> = result_database.all_facts().collect();
+        assert_eq!(
+            result_facts,
+            [
+                Fact {
                     predicate: Predicate(1),
                     values: &[Value::Symbol(1), Value::Symbol(2),],
-                })
-            );
-            assert_eq!(
-                result_facts.next(),
-                Some(Fact {
-                    predicate: Predicate(1),
-                    values: &[Value::Symbol(1), Value::Symbol(3),],
-                })
-            );
-            assert_eq!(
-                result_facts.next(),
-                Some(Fact {
+                },
+                Fact {
                     predicate: Predicate(1),
                     values: &[Value::Symbol(1), Value::Symbol(4),],
-                })
-            );
-        }
-        assert_eq!(result_facts.next(), None);
-        assert_eq!(result_facts.next(), None);
+                },
+                Fact {
+                    predicate: Predicate(1),
+                    values: &[Value::Symbol(1), Value::Symbol(3),],
+                }
+            ].iter()
+                .cloned()
+                .collect()
+        );
     }
 }

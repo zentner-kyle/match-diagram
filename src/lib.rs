@@ -9,3 +9,4 @@ mod predicate;
 mod simple_query;
 mod table;
 mod value;
+mod registers;
