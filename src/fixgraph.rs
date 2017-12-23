@@ -3,10 +3,10 @@ use std::iter;
 use std::slice;
 use std::usize;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeIndex(pub usize);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EdgeIndex(pub usize);
 
 const INVALID_NODE_INDEX: NodeIndex = NodeIndex(usize::MAX);

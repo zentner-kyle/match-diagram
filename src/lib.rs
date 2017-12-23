@@ -2,6 +2,7 @@
 
 mod database;
 mod diagram;
+mod evaluation;
 mod fact;
 mod fixgraph;
 mod index;

@@ -1,8 +1,9 @@
 #![allow(unused_imports)]
-use std::collections::HashSet;
+use std::collections::{hash_map, HashMap, HashSet};
 use std::iter;
 
 use database::Database;
+use evaluation::Evaluation;
 use fact::Fact;
 use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
 use predicate::Predicate;
@@ -11,26 +12,26 @@ use simple_query::{SimpleQuery, SimpleQueryTerm};
 use value::Value;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-struct MatchTerm {
-    constraint: MatchTermConstraint,
-    target: Option<usize>,
+pub struct MatchTerm {
+    pub constraint: MatchTermConstraint,
+    pub target: Option<usize>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum MatchTermConstraint {
+pub enum MatchTermConstraint {
     Register(usize),
     Constant(Value),
     Free,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum OutputTerm {
+pub enum OutputTerm {
     Register(usize),
     Constant(Value),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-enum Node {
+pub enum Node {
     Match {
         predicate: Predicate,
         terms: Vec<MatchTerm>,
@@ -41,155 +42,53 @@ enum Node {
     },
 }
 
-enum PropagateOutput {
+pub enum PropagateOutput {
     Registers(RegisterSet, RegisterSet),
     Database(Database),
 }
 
-#[derive(Clone, Debug)]
-struct Diagram {
-    num_registers: usize,
-    graph: FixGraph<Node>,
+pub trait Diagram {
+    fn insert_node(&mut self, node: Node) -> NodeIndex;
+
+    fn get_node(&self, index: NodeIndex) -> &Node;
+
+    fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node;
+
+    fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex);
+
+    fn set_on_refute(&mut self, src: NodeIndex, target: NodeIndex);
+
+    fn clear_on_match(&mut self, src: NodeIndex);
+
+    fn clear_on_refute(&mut self, src: NodeIndex);
+
+    fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex>;
+
+    fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex>;
+
+    fn len(&self) -> usize;
+
+    fn get_match_sources(&self, child: NodeIndex) -> Option<&[NodeIndex]>;
+
+    fn get_refute_sources(&self, child: NodeIndex) -> Option<&[NodeIndex]>;
 }
 
-impl Diagram {
+#[derive(Clone, Debug)]
+pub struct GraphDiagram {
+    num_registers: usize,
+    graph: FixGraph<Node>,
+    match_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
+    refute_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
+}
+
+impl GraphDiagram {
     pub fn new(num_registers: usize) -> Self {
-        Diagram {
+        GraphDiagram {
             num_registers,
             graph: FixGraph::new(2),
+            match_sources: HashMap::new(),
+            refute_sources: HashMap::new(),
         }
-    }
-
-    fn propagate(
-        &self,
-        node: NodeIndex,
-        database: &Database,
-        registers: &RegisterSet,
-    ) -> PropagateOutput {
-        match *self.graph.get_node(node) {
-            Node::Match {
-                predicate,
-                ref terms,
-            } => {
-                let mut match_set = RegisterSet::new(registers.num_registers());
-                let mut refute_set = RegisterSet::new(registers.num_registers());
-                let mut query_terms = Vec::with_capacity(terms.len());
-                for register_file in registers.iter() {
-                    for term in terms {
-                        query_terms.push(match &term.constraint {
-                            &MatchTermConstraint::Free => SimpleQueryTerm::Free,
-                            &MatchTermConstraint::Constant(ref value) => {
-                                SimpleQueryTerm::Constant { value }
-                            }
-                            &MatchTermConstraint::Register(index) => {
-                                if index >= register_file.len() {
-                                    SimpleQueryTerm::Constant { value: &Value::Nil }
-                                } else {
-                                    if let Some(ref value) = register_file[index] {
-                                        SimpleQueryTerm::Constant { value }
-                                    } else {
-                                        SimpleQueryTerm::Free
-                                    }
-                                }
-                            }
-                        });
-                    }
-                    let mut query_iter = database
-                        .simple_query(SimpleQuery {
-                            predicate,
-                            terms: &query_terms,
-                        })
-                        .peekable();
-                    if query_iter.peek().is_some() {
-                        for fact in query_iter {
-                            let mut r = register_file.clone();
-                            for (term, value) in terms.iter().zip(fact.values.iter()) {
-                                if let Some(target) = term.target {
-                                    if target < r.len() {
-                                        r[target] = Some(value.clone());
-                                    }
-                                };
-                            }
-                            match_set.push(r);
-                        }
-                    } else {
-                        refute_set.push(register_file.clone());
-                    }
-                    query_terms.clear();
-                }
-                PropagateOutput::Registers(match_set, refute_set)
-            }
-            Node::Output {
-                predicate,
-                ref terms,
-            } => {
-                let mut result_db = Database::new();
-                for register_file in registers.iter() {
-                    let mut values = Vec::with_capacity(terms.len());
-                    for term in terms {
-                        match *term {
-                            OutputTerm::Constant(ref value) => {
-                                values.push(value.clone());
-                            }
-                            OutputTerm::Register(index) => {
-                                if index < register_file.len() {
-                                    if let Some(ref value) = register_file[index] {
-                                        values.push(value.clone());
-                                    } else {
-                                        values.push(Value::Nil);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    result_db.insert_fact(Fact {
-                        predicate,
-                        values: &values[..],
-                    });
-                }
-                PropagateOutput::Database(result_db)
-            }
-        }
-    }
-
-    pub fn insert_node(&mut self, node: Node) -> NodeIndex {
-        self.graph.push(node)
-    }
-
-    pub fn get_node(&self, index: NodeIndex) -> &Node {
-        self.graph.get_node(index)
-    }
-
-    pub fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node {
-        self.graph.get_node_mut(index)
-    }
-
-    pub fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex) {
-        self.graph.set_edge_target(src, EdgeIndex(1), Some(target));
-    }
-
-    pub fn set_on_refute(&mut self, src: NodeIndex, target: NodeIndex) {
-        self.graph.set_edge_target(src, EdgeIndex(0), Some(target));
-    }
-
-    pub fn clear_on_match(&mut self, src: NodeIndex) {
-        self.graph.set_edge_target(src, EdgeIndex(1), None);
-    }
-
-    pub fn clear_on_refute(&mut self, src: NodeIndex) {
-        self.graph.set_edge_target(src, EdgeIndex(0), None);
-    }
-
-    pub fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex> {
-        self.graph.get_edge_target(src, EdgeIndex(1))
-    }
-
-    pub fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
-        self.graph.get_edge_target(src, EdgeIndex(0))
-    }
-
-    pub fn len(&self) -> usize {
-        self.graph.len()
     }
 
     pub fn evaluate(&self, input: &Database) -> Database {
@@ -197,77 +96,93 @@ impl Diagram {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Evaluation {
-    input_sets: Vec<RegisterSet>,
-    output_sets: Vec<(RegisterSet, RegisterSet)>,
-    output_dbs: Vec<Option<Database>>,
-    total_db: Database,
+fn insert_source(
+    sources: &mut HashMap<NodeIndex, Vec<NodeIndex>>,
+    src: NodeIndex,
+    target: NodeIndex,
+) {
+    match sources.entry(target) {
+        hash_map::Entry::Occupied(mut entry) => {
+            if !entry.get().contains(&src) {
+                entry.get_mut().push(src);
+            }
+        }
+        hash_map::Entry::Vacant(entry) => {
+            entry.insert(vec![src]);
+        }
+    }
 }
 
-impl Evaluation {
-    fn run(diagram: &Diagram, input: &Database, num_registers: usize) -> Self {
-        let mut input_sets: Vec<RegisterSet> = iter::repeat(RegisterSet::new(num_registers))
-            .take(diagram.len())
-            .collect();
-        let mut output_sets: Vec<(RegisterSet, RegisterSet)> = iter::repeat((
-            RegisterSet::new(num_registers),
-            RegisterSet::new(num_registers),
-        )).take(diagram.len())
-            .collect();
-        input_sets[0].push(RegisterFile::new(num_registers));
-        let mut output_dbs: Vec<_> = iter::repeat(None).take(diagram.len()).collect();
-        let mut pending_nodes = vec![NodeIndex(0)];
-        while let Some(node_index) = pending_nodes.pop() {
-            match diagram.propagate(node_index, input, &input_sets[node_index.0]) {
-                PropagateOutput::Registers(match_set, refute_set) => {
-                    let (ref mut old_match_set, ref mut old_refute_set) = output_sets[node_index.0];
-                    if *old_match_set != match_set {
-                        for registers in match_set.iter() {
-                            old_match_set.push(registers.clone());
-                        }
-                        if let Some(match_node) = diagram.get_on_match(node_index) {
-                            let input_sets = &mut input_sets[match_node.0];
-                            for registers in match_set.iter() {
-                                input_sets.push(registers.clone());
-                            }
-                            if !pending_nodes.contains(&match_node) {
-                                pending_nodes.push(match_node);
-                            }
-                        }
-                    }
-                    if *old_refute_set != refute_set {
-                        for registers in refute_set.iter() {
-                            old_refute_set.push(registers.clone());
-                        }
-                        if let Some(refute_node) = diagram.get_on_refute(node_index) {
-                            let input_sets = &mut input_sets[refute_node.0];
-                            for registers in refute_set.iter() {
-                                input_sets.push(registers.clone());
-                            }
-                            if !pending_nodes.contains(&refute_node) {
-                                pending_nodes.push(refute_node);
-                            }
-                        }
-                    }
-                }
-                PropagateOutput::Database(db) => {
-                    output_dbs[node_index.0] = Some(db);
-                }
-            }
+fn remove_source(
+    sources: &mut HashMap<NodeIndex, Vec<NodeIndex>>,
+    src: NodeIndex,
+    target: NodeIndex,
+) {
+    let sources = sources
+        .get_mut(&target)
+        .expect("Should only be removing source which exists");
+    let index = sources
+        .iter()
+        .position(|&s| s == src)
+        .expect("src should be present in the sources of target");
+    sources.remove(index);
+}
+
+impl Diagram for GraphDiagram {
+    fn insert_node(&mut self, node: Node) -> NodeIndex {
+        self.graph.push(node)
+    }
+
+    fn get_node(&self, index: NodeIndex) -> &Node {
+        self.graph.get_node(index)
+    }
+
+    fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node {
+        self.graph.get_node_mut(index)
+    }
+
+    fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex) {
+        self.graph.set_edge_target(src, EdgeIndex(1), Some(target));
+        insert_source(&mut self.match_sources, src, target);
+    }
+
+    fn set_on_refute(&mut self, src: NodeIndex, target: NodeIndex) {
+        self.graph.set_edge_target(src, EdgeIndex(0), Some(target));
+        insert_source(&mut self.refute_sources, src, target);
+    }
+
+    fn clear_on_match(&mut self, src: NodeIndex) {
+        if let Some(target) = self.get_on_match(src) {
+            remove_source(&mut self.match_sources, src, target);
         }
-        let mut total_db = Database::new();
-        for db in output_dbs.iter().filter_map(|db| db.as_ref()) {
-            for fact in db.all_facts() {
-                total_db.insert_fact(fact);
-            }
+        self.graph.set_edge_target(src, EdgeIndex(1), None);
+    }
+
+    fn clear_on_refute(&mut self, src: NodeIndex) {
+        if let Some(target) = self.get_on_refute(src) {
+            remove_source(&mut self.refute_sources, src, target);
         }
-        Evaluation {
-            input_sets,
-            output_sets,
-            output_dbs,
-            total_db,
-        }
+        self.graph.set_edge_target(src, EdgeIndex(0), None);
+    }
+
+    fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex> {
+        self.graph.get_edge_target(src, EdgeIndex(1))
+    }
+
+    fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
+        self.graph.get_edge_target(src, EdgeIndex(0))
+    }
+
+    fn len(&self) -> usize {
+        self.graph.len()
+    }
+
+    fn get_match_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {
+        self.match_sources.get(&target).map(|v| &v[..])
+    }
+
+    fn get_refute_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {
+        self.refute_sources.get(&target).map(|v| &v[..])
     }
 }
 
@@ -277,7 +192,7 @@ mod tests {
 
     #[test]
     fn can_evaluate_constant_diagram() {
-        let mut diagram = Diagram::new(0);
+        let mut diagram = GraphDiagram::new(0);
         let output_node = Node::Output {
             predicate: Predicate(0),
             terms: vec![
@@ -302,7 +217,7 @@ mod tests {
 
     #[test]
     fn can_evaluate_copying_diagram() {
-        let mut diagram = Diagram::new(2);
+        let mut diagram = GraphDiagram::new(2);
         let match_anything_node = Node::Match {
             predicate: Predicate(0),
             terms: vec![
@@ -345,7 +260,7 @@ mod tests {
 
     #[test]
     fn can_evaluate_filtering_diagram() {
-        let mut diagram = Diagram::new(2);
+        let mut diagram = GraphDiagram::new(2);
         let match_ones_node = Node::Match {
             predicate: Predicate(0),
             terms: vec![
@@ -406,7 +321,7 @@ mod tests {
 
     #[test]
     fn can_evaluate_nested_filtering_diagram() {
-        let mut diagram = Diagram::new(2);
+        let mut diagram = GraphDiagram::new(2);
         let match_ones_node = Node::Match {
             predicate: Predicate(0),
             terms: vec![
