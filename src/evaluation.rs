@@ -1,13 +1,9 @@
-#![allow(unused_imports)]
-use std::collections::HashSet;
 use std::iter;
 
 use database::Database;
-use diagram::{Diagram, GraphDiagram, MatchTerm, MatchTermConstraint, Node, OutputTerm,
-              PropagateOutput};
+use diagram::{Diagram, MatchTermConstraint, Node, OutputTerm, PropagateOutput};
 use fact::Fact;
-use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
-use predicate::Predicate;
+use fixgraph::NodeIndex;
 use registers::{RegisterFile, RegisterSet};
 use simple_query::{SimpleQuery, SimpleQueryTerm};
 use value::Value;
