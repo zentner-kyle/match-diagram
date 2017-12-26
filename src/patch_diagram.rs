@@ -7,6 +7,7 @@ use tiny_map::TinyMap;
 #[derive(Clone, Debug)]
 pub struct PatchDiagram<'a> {
     graph_diagram: &'a GraphDiagram,
+    root: NodeIndex,
     next_node: usize,
     node_map: TinyMap<NodeIndex, Node>,
     match_targets: TinyMap<NodeIndex, Option<NodeIndex>>,
@@ -19,6 +20,7 @@ impl<'a> PatchDiagram<'a> {
     pub fn new(graph_diagram: &'a GraphDiagram) -> Self {
         PatchDiagram {
             graph_diagram,
+            root: graph_diagram.get_root(),
             next_node: graph_diagram.len(),
             node_map: TinyMap::new(),
             match_targets: TinyMap::new(),
@@ -95,6 +97,14 @@ fn set_sources<'a, F: FnOnce() -> Option<&'a [NodeIndex]>>(
 }
 
 impl<'a> Diagram for PatchDiagram<'a> {
+    fn get_root(&self) -> NodeIndex {
+        self.root
+    }
+
+    fn set_root(&mut self, root: NodeIndex) {
+        self.root = root
+    }
+
     fn insert_node(&mut self, node: Node) -> NodeIndex {
         let node_index = NodeIndex(self.next_node);
         self.next_node += 1;

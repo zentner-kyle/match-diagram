@@ -1,12 +1,15 @@
 #![allow(dead_code)]
+extern crate rand;
 
 mod database;
 mod diagram;
 mod evaluation;
 mod fact;
 mod fixgraph;
+mod gen_mutation;
 mod graph_diagram;
 mod index;
+mod mutation;
 mod patch_diagram;
 mod predicate;
 mod registers;

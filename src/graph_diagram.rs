@@ -8,6 +8,7 @@ use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
 #[derive(Clone, Debug)]
 pub struct GraphDiagram {
     num_registers: usize,
+    root: NodeIndex,
     graph: FixGraph<Node>,
     match_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
     refute_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
@@ -17,6 +18,7 @@ impl GraphDiagram {
     pub fn new(num_registers: usize) -> Self {
         GraphDiagram {
             num_registers,
+            root: NodeIndex(0),
             graph: FixGraph::new(2),
             match_sources: HashMap::new(),
             refute_sources: HashMap::new(),
@@ -61,6 +63,14 @@ fn remove_source(
 }
 
 impl Diagram for GraphDiagram {
+    fn get_root(&self) -> NodeIndex {
+        self.root
+    }
+
+    fn set_root(&mut self, root: NodeIndex) {
+        self.root = root
+    }
+
     fn insert_node(&mut self, node: Node) -> NodeIndex {
         self.graph.push(node)
     }

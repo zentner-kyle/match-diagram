@@ -41,6 +41,10 @@ pub enum PropagateOutput {
 }
 
 pub trait Diagram {
+    fn get_root(&self) -> NodeIndex;
+
+    fn set_root(&mut self, root: NodeIndex);
+
     fn insert_node(&mut self, node: Node) -> NodeIndex;
 
     fn get_node(&self, index: NodeIndex) -> &Node;
