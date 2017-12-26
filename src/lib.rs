@@ -9,6 +9,7 @@ mod fixgraph;
 mod gen_mutation;
 mod graph_diagram;
 mod index;
+mod mutate;
 mod mutation;
 mod patch_diagram;
 mod predicate;

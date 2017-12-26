@@ -56,12 +56,13 @@ pub enum Mutation {
         register: Option<usize>,
     },
     InsertPassthrough {
+        predicate: Predicate,
         edge: Edge,
     },
     RemoveNode {
         node: NodeIndex,
     },
-    DuplicateNode {
+    DuplicateTarget {
         node: NodeIndex,
     },
     SetEdge {

@@ -1,9 +1,10 @@
 use std::collections::{hash_map, HashMap};
 
 use database::Database;
-use diagram::{Diagram, Node};
+use diagram::{get_predicate_and_num_terms, Diagram, Node};
 use evaluation::Evaluation;
 use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
+use predicate::Predicate;
 
 #[derive(Clone, Debug)]
 pub struct GraphDiagram {
@@ -12,6 +13,7 @@ pub struct GraphDiagram {
     graph: FixGraph<Node>,
     match_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
     refute_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
+    num_terms_for_predicate: HashMap<Predicate, usize>,
 }
 
 impl GraphDiagram {
@@ -22,6 +24,7 @@ impl GraphDiagram {
             graph: FixGraph::new(2),
             match_sources: HashMap::new(),
             refute_sources: HashMap::new(),
+            num_terms_for_predicate: HashMap::new(),
         }
     }
 
@@ -72,6 +75,17 @@ impl Diagram for GraphDiagram {
     }
 
     fn insert_node(&mut self, node: Node) -> NodeIndex {
+        let (inserted_predicate, num_terms) = get_predicate_and_num_terms(&node);
+        match self.num_terms_for_predicate.entry(inserted_predicate) {
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(num_terms);
+            }
+            hash_map::Entry::Occupied(entry) => {
+                if *entry.get() != num_terms {
+                    panic!("Wrong number of terms in node");
+                }
+            }
+        }
         self.graph.push(node)
     }
 
@@ -135,6 +149,10 @@ impl Diagram for GraphDiagram {
 
     fn get_num_registers(&self) -> usize {
         self.num_registers
+    }
+
+    fn get_num_terms_for_predicate(&self, predicate: Predicate) -> Option<usize> {
+        self.num_terms_for_predicate.get(&predicate).cloned()
     }
 }
 

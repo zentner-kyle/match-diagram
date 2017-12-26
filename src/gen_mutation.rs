@@ -104,12 +104,13 @@ impl GenMutation for UniformMutationContext {
                 },
             },
             4 => Mutation::InsertPassthrough {
+                predicate: self.gen_predicate(rng),
                 edge: self.gen_edge(rng),
             },
             5 => Mutation::RemoveNode {
                 node: self.gen_node(rng),
             },
-            6 => Mutation::DuplicateNode {
+            6 => Mutation::DuplicateTarget {
                 node: self.gen_node(rng),
             },
             7 => Mutation::SetEdge {
