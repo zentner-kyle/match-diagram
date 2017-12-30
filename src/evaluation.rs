@@ -130,8 +130,9 @@ impl Evaluation {
 
     pub fn run<D: Diagram>(diagram: &D, input: &Database, num_registers: usize) -> Self {
         let mut eval = Self::new(diagram, num_registers);
-        eval.input_sets[0].push(RegisterFile::new(num_registers));
-        eval.start_at(diagram, NodeIndex(0), input);
+        let root = diagram.get_root();
+        eval.input_sets[root.0].push(RegisterFile::new(num_registers));
+        eval.start_at(diagram, root, input);
         eval
     }
 

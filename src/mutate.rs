@@ -64,45 +64,46 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             };
             return None;
         }
-        Mutation::InsertPassthrough { predicate, edge } => {
-            if let Some(num_terms) = diagram.get_num_terms_for_predicate(predicate) {
-                let node = Node::Match {
-                    predicate,
-                    terms: iter::repeat(MatchTerm {
-                        constraint: MatchTermConstraint::Free,
-                        target: None,
-                    }).take(num_terms)
-                        .collect(),
-                };
-                let node_index = diagram.insert_node(node);
-                match edge {
-                    Edge::Root => {
-                        let target = diagram.get_root();
+        Mutation::InsertPassthrough {
+            predicate,
+            num_terms,
+            edge,
+        } => {
+            let node = Node::Match {
+                predicate,
+                terms: iter::repeat(MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: None,
+                }).take(num_terms)
+                    .collect(),
+            };
+            let node_index = diagram.insert_node(node);
+            match edge {
+                Edge::Root => {
+                    let target = diagram.get_root();
+                    diagram.set_on_match(node_index, target);
+                    diagram.set_on_refute(node_index, target);
+                    diagram.set_root(node_index);
+                }
+                Edge::Match(src) => {
+                    if let Some(target) = diagram.get_on_match(src) {
                         diagram.set_on_match(node_index, target);
                         diagram.set_on_refute(node_index, target);
-                        diagram.set_root(node_index);
                     }
-                    Edge::Match(src) => {
-                        if let Some(target) = diagram.get_on_match(src) {
-                            diagram.set_on_match(node_index, target);
-                            diagram.set_on_refute(node_index, target);
-                        }
-                        diagram.set_on_match(src, node_index);
-                    }
-                    Edge::Refute(src) => {
-                        if let Some(target) = diagram.get_on_refute(src) {
-                            diagram.set_on_match(node_index, target);
-                            diagram.set_on_refute(node_index, target);
-                        }
-                        diagram.set_on_refute(src, node_index);
-                    }
+                    diagram.set_on_match(src, node_index);
                 }
-                return Some(MutationResult {
-                    phenotype_could_have_changed: false,
-                    node_to_restart: None,
-                });
+                Edge::Refute(src) => {
+                    if let Some(target) = diagram.get_on_refute(src) {
+                        diagram.set_on_match(node_index, target);
+                        diagram.set_on_refute(node_index, target);
+                    }
+                    diagram.set_on_refute(src, node_index);
+                }
             }
-            return None;
+            return Some(MutationResult {
+                phenotype_could_have_changed: false,
+                node_to_restart: None,
+            });
         }
         Mutation::RemoveNode { node } => {
             let node_could_be_passthrough =
@@ -257,5 +258,163 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
                 })
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diagram::{MatchTerm, MatchTermConstraint, OutputTerm};
+    use graph_diagram::GraphDiagram;
+    use predicate::Predicate;
+    use value::Value;
+
+    #[test]
+    fn can_set_constraint_register() {
+        let mut diagram = GraphDiagram::new(2);
+        let match_anything_node = Node::Match {
+            predicate: Predicate(0),
+            terms: vec![
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(0),
+                },
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
+            ],
+        };
+        let output_node = Node::Output {
+            predicate: Predicate(1),
+            terms: vec![OutputTerm::Register(0), OutputTerm::Register(1)],
+        };
+        let root = diagram.insert_node(match_anything_node);
+        diagram.set_root(root);
+        assert_eq!(root, NodeIndex(0));
+        let output = diagram.insert_node(output_node);
+        diagram.set_on_match(root, output);
+        apply_mutation(
+            &mut diagram,
+            Mutation::SetConstraintRegister {
+                term: Term(root, 0),
+                register: 0,
+            },
+        );
+        assert_eq!(
+            *diagram.get_node(root),
+            Node::Match {
+                predicate: Predicate(0),
+                terms: vec![
+                    MatchTerm {
+                        constraint: MatchTermConstraint::Register(0),
+                        target: Some(0),
+                    },
+                    MatchTerm {
+                        constraint: MatchTermConstraint::Free,
+                        target: Some(1),
+                    },
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn can_set_constraint_constant() {
+        let mut diagram = GraphDiagram::new(2);
+        let match_anything_node = Node::Match {
+            predicate: Predicate(0),
+            terms: vec![
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(0),
+                },
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
+            ],
+        };
+        let output_node = Node::Output {
+            predicate: Predicate(1),
+            terms: vec![OutputTerm::Register(0), OutputTerm::Register(1)],
+        };
+        let root = diagram.insert_node(match_anything_node);
+        diagram.set_root(root);
+        assert_eq!(root, NodeIndex(0));
+        let output = diagram.insert_node(output_node);
+        diagram.set_on_match(root, output);
+        apply_mutation(
+            &mut diagram,
+            Mutation::SetConstraintConstant {
+                term: Term(root, 0),
+                value: Value::Symbol(0),
+            },
+        );
+        assert_eq!(
+            *diagram.get_node(root),
+            Node::Match {
+                predicate: Predicate(0),
+                terms: vec![
+                    MatchTerm {
+                        constraint: MatchTermConstraint::Constant(Value::Symbol(0)),
+                        target: Some(0),
+                    },
+                    MatchTerm {
+                        constraint: MatchTermConstraint::Free,
+                        target: Some(1),
+                    },
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn can_set_constraint_free() {
+        let mut diagram = GraphDiagram::new(2);
+        let match_anything_node = Node::Match {
+            predicate: Predicate(0),
+            terms: vec![
+                MatchTerm {
+                    constraint: MatchTermConstraint::Constant(Value::Symbol(0)),
+                    target: Some(0),
+                },
+                MatchTerm {
+                    constraint: MatchTermConstraint::Free,
+                    target: Some(1),
+                },
+            ],
+        };
+        let output_node = Node::Output {
+            predicate: Predicate(1),
+            terms: vec![OutputTerm::Register(0), OutputTerm::Register(1)],
+        };
+        let root = diagram.insert_node(match_anything_node);
+        diagram.set_root(root);
+        assert_eq!(root, NodeIndex(0));
+        let output = diagram.insert_node(output_node);
+        diagram.set_on_match(root, output);
+        apply_mutation(
+            &mut diagram,
+            Mutation::SetConstraintFree {
+                term: Term(root, 0),
+            },
+        );
+        assert_eq!(
+            *diagram.get_node(root),
+            Node::Match {
+                predicate: Predicate(0),
+                terms: vec![
+                    MatchTerm {
+                        constraint: MatchTermConstraint::Free,
+                        target: Some(0),
+                    },
+                    MatchTerm {
+                        constraint: MatchTermConstraint::Free,
+                        target: Some(1),
+                    },
+                ],
+            }
+        );
     }
 }

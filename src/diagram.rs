@@ -70,28 +70,4 @@ pub trait Diagram {
     fn get_refute_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]>;
 
     fn get_num_registers(&self) -> usize;
-
-    fn get_num_terms_for_predicate(&self, predicate: Predicate) -> Option<usize>;
-}
-
-pub fn get_predicate_and_num_terms(node: &Node) -> (Predicate, usize) {
-    let inserted_predicate;
-    let num_terms;
-    match *node {
-        Node::Match {
-            ref predicate,
-            ref terms,
-        } => {
-            inserted_predicate = *predicate;
-            num_terms = terms.len();
-        }
-        Node::Output {
-            ref predicate,
-            ref terms,
-        } => {
-            inserted_predicate = *predicate;
-            num_terms = terms.len();
-        }
-    }
-    (inserted_predicate, num_terms)
 }

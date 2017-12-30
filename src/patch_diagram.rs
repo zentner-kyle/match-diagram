@@ -1,7 +1,6 @@
-use diagram::{get_predicate_and_num_terms, Diagram, Node};
+use diagram::{Diagram, Node};
 use fixgraph::NodeIndex;
 use graph_diagram::GraphDiagram;
-use predicate::Predicate;
 use tiny_map;
 use tiny_map::TinyMap;
 
@@ -15,7 +14,6 @@ pub struct PatchDiagram<'a> {
     refute_targets: TinyMap<NodeIndex, Option<NodeIndex>>,
     match_sources: TinyMap<NodeIndex, Vec<NodeIndex>>,
     refute_sources: TinyMap<NodeIndex, Vec<NodeIndex>>,
-    num_terms_for_predicate: TinyMap<Predicate, usize>,
 }
 
 impl<'a> PatchDiagram<'a> {
@@ -29,7 +27,6 @@ impl<'a> PatchDiagram<'a> {
             refute_targets: TinyMap::new(),
             match_sources: TinyMap::new(),
             refute_sources: TinyMap::new(),
-            num_terms_for_predicate: TinyMap::new(),
         }
     }
 }
@@ -109,17 +106,6 @@ impl<'a> Diagram for PatchDiagram<'a> {
     }
 
     fn insert_node(&mut self, node: Node) -> NodeIndex {
-        let (inserted_predicate, num_terms) = get_predicate_and_num_terms(&node);
-        match self.num_terms_for_predicate.entry(inserted_predicate) {
-            tiny_map::Entry::Vacant(entry) => {
-                entry.insert(num_terms);
-            }
-            tiny_map::Entry::Occupied(entry) => {
-                if *entry.get() != num_terms {
-                    panic!("Wrong number of terms in node");
-                }
-            }
-        }
         let node_index = NodeIndex(self.next_node);
         self.next_node += 1;
         self.node_map.insert(node_index, node);
@@ -242,9 +228,5 @@ impl<'a> Diagram for PatchDiagram<'a> {
 
     fn get_num_registers(&self) -> usize {
         self.graph_diagram.get_num_registers()
-    }
-
-    fn get_num_terms_for_predicate(&self, predicate: Predicate) -> Option<usize> {
-        self.num_terms_for_predicate.get(&predicate).cloned()
     }
 }

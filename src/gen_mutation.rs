@@ -3,6 +3,7 @@ use rand::Rng;
 use fixgraph::NodeIndex;
 use mutation::{Edge, Mutation, Term};
 use predicate::Predicate;
+use std::collections::HashMap;
 use value::Value;
 
 pub struct UniformMutationContext {
@@ -11,6 +12,7 @@ pub struct UniformMutationContext {
     num_registers: usize,
     num_symbols: u64,
     num_predicates: u64,
+    num_terms_for_predicate: HashMap<Predicate, usize>,
 }
 
 pub trait GenMutation {
@@ -40,6 +42,7 @@ impl UniformMutationContext {
         num_registers: usize,
         num_symbols: u64,
         num_predicates: u64,
+        num_terms_for_predicate: HashMap<Predicate, usize>,
     ) -> Self {
         UniformMutationContext {
             num_nodes: nonzero(num_nodes),
@@ -47,6 +50,7 @@ impl UniformMutationContext {
             num_registers: nonzero(num_registers),
             num_symbols: nonzero_u64(num_symbols),
             num_predicates: nonzero_u64(num_predicates),
+            num_terms_for_predicate,
         }
     }
 
@@ -103,10 +107,15 @@ impl GenMutation for UniformMutationContext {
                     None
                 },
             },
-            4 => Mutation::InsertPassthrough {
-                predicate: self.gen_predicate(rng),
-                edge: self.gen_edge(rng),
-            },
+            4 => {
+                let predicate = self.gen_predicate(rng);
+                let num_terms = *self.num_terms_for_predicate.get(&predicate).unwrap();
+                Mutation::InsertPassthrough {
+                    predicate,
+                    num_terms,
+                    edge: self.gen_edge(rng),
+                }
+            }
             5 => Mutation::RemoveNode {
                 node: self.gen_node(rng),
             },

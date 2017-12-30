@@ -57,6 +57,7 @@ pub enum Mutation {
     },
     InsertPassthrough {
         predicate: Predicate,
+        num_terms: usize,
         edge: Edge,
     },
     RemoveNode {
