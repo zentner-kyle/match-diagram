@@ -106,3 +106,48 @@ is that defining precisely "can be combined" is very hard.
 
 There's also the problem that it might take arbitrarily long to escape local
 maxima, or to stabilize on a "good" or small solution for the maxima.
+
+It would be convenient to have a textual representation of rule diagrams.
+
+Maybe something like this:
+
+```
+  match root x($0 <- $1, _, #10) { out } { }
+  output out y($1, $2)
+```
+
+Let's try to write Tic-Tac-Toe as a rule diagram:
+
+```
+  root: player($player <- _) { check_move }
+  check_move: move($x <- _, $y <- _) {
+    board($x, $y, :blank) {
+      do_move
+    }
+  }
+  do_move: board($x <- $x, $y <- $y, $p <- _) {
+    output next_board($x, $y, $player)
+  } {
+    output next_board($x, $y, $p)
+  }
+```
+
+Doing that easily required changing the meaning of reject. Instead of a reject
+path being activated only if no facts matched the node, the reject path is
+activated for each fact which doesn't match the node.
+
+This is usually more powerful. It also makes indicies useless for these nodes.
+For the current evaluation method, there's no indication that indicies are even
+a good idea, since the number of input facts is very small.
+
+
+```
+  root: player(%0 <- _) { check_move }
+  check_move: move(%1 <- _, %2 <- _) { check_space }
+  check_space: board(%1, %2, :blank) { do_move }
+  do_move: board(%1 <- %1, %2 <- %2, %3 <- _) {
+    output next_board(%1, %2, %0)
+  } {
+    output next_board(%1, %2, %3)
+  }
+```

@@ -1,0 +1,8 @@
+root: player(_ -> %0) { check_move }
+check_move: move(_ -> %1, _ -> %2) { check_space }
+check_space: board(%1, %2, :blank) { do_move }
+do_move: board(%1 -> %1, %2 -> %2, _ -> %3) {
+  output next_board(%1, %2, %0)
+} {
+  output next_board(%1, %2, %3)
+}

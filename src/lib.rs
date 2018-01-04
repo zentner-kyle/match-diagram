@@ -1,6 +1,10 @@
 #![allow(dead_code)]
+#![allow(unused_imports)]
+extern crate evolution_strategies;
 extern crate rand;
+extern crate unicode_xid;
 
+mod context;
 mod database;
 mod diagram;
 mod evaluation;
@@ -11,6 +15,7 @@ mod graph_diagram;
 mod index;
 mod mutate;
 mod mutation;
+mod parse;
 mod patch_diagram;
 mod predicate;
 mod registers;

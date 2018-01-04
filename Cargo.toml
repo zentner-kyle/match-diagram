@@ -1,7 +1,8 @@
 [package]
 name = "match-diagram"
 version = "0.1.0"
-authors = ["Kyle Zentner <zentner.kyle@gmail.com>"]
+authors = ["K. Zentner <zentner.kyle@gmail.com>"]
 
 [dependencies]
 rand = "0.4.1"
+unicode-xid = "0.1.0"

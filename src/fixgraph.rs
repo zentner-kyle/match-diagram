@@ -132,11 +132,35 @@ impl<N: fmt::Debug> fmt::Debug for FixGraph<N> {
     }
 }
 
+impl<'a, N: 'a + PartialEq> PartialEq for Group<'a, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.edges == other.edges && self.node == other.node
+    }
+}
+
 pub struct Edges<'a, N: 'a> {
     graph: &'a FixGraph<N>,
     node: NodeIndex,
     edge: EdgeIndex,
 }
+
+impl<'a, N: 'a> PartialEq for Edges<'a, N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node && self.edge == other.edge
+    }
+}
+
+impl<'a, N: 'a> Eq for Edges<'a, N> {}
+
+impl<N: PartialEq> PartialEq for FixGraph<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.group_iter()
+            .zip(other.group_iter())
+            .all(|(s, o)| s == o)
+    }
+}
+
+impl<N: Eq> Eq for FixGraph<N> {}
 
 // derive uses the wrong bounds for Edges.
 // Specifically, it requires N: Clone.

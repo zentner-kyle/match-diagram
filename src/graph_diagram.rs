@@ -5,7 +5,7 @@ use diagram::{Diagram, Node};
 use evaluation::Evaluation;
 use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphDiagram {
     num_registers: usize,
     root: NodeIndex,
