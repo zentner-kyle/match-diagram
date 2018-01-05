@@ -496,6 +496,21 @@ pub fn update_diagram<'a, 'b, 'c, D: Diagram>(
 }
 
 #[cfg(test)]
+pub fn node_literal(src: &str) -> Node {
+    let mut d = GraphDiagram::new(100);
+    let mut c = Context::new();
+    let src = format!("{} {{ }}", src);
+    {
+        let mut context = ParseContext {
+            diagram: &mut d,
+            context: &mut c,
+        };
+        node_without_name(&src, &mut context, Some("root")).expect("Could not parse node literal");
+    }
+    d.get_node(d.get_root()).clone()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
