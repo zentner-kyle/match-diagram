@@ -2,10 +2,10 @@ use std;
 use std::str::FromStr;
 use unicode_xid::UnicodeXID;
 
-use graph_diagram::GraphDiagram;
 use context::{Context, NodeInfo};
 use diagram::{Diagram, MatchTerm, MatchTermConstraint, Node, OutputTerm};
 use fixgraph::NodeIndex;
+use graph_diagram::GraphDiagram;
 use predicate::Predicate;
 use value::Value;
 
@@ -15,6 +15,8 @@ pub enum Error<'a> {
 }
 
 type Result<'a, T> = std::result::Result<(T, &'a str), Error<'a>>;
+
+type EmptyResult<'a> = std::result::Result<&'a str, Error<'a>>;
 
 fn err_msg<'a, T>(msg: &'static str, rest: &'a str) -> Result<'a, T> {
     Err(err_from_str(msg, rest))
@@ -88,7 +90,7 @@ where
     return Ok((slice_src(src, rest), rest));
 }
 
-fn prefix<'a, 'b>(src: &'a str, prefix: &'b str) -> Result<'a, &'a str> {
+fn prefix<'a, 'b>(src: &'a str, prefix: &'b str) -> EmptyResult<'a> {
     let mut rest = src;
     let mut cs = src.chars();
     let mut ps = prefix.chars();
@@ -99,9 +101,12 @@ fn prefix<'a, 'b>(src: &'a str, prefix: &'b str) -> Result<'a, &'a str> {
                 continue;
             }
         }
-        return err_msg("Prefix did not match", src);
+        return Err(Error::Msg {
+            msg: "Prefix did not match",
+            rest,
+        });
     }
-    return Ok((slice_src(src, rest), rest));
+    return Ok(rest);
 }
 
 fn unsigned_decimal_integer(src: &str) -> Result<u64> {
@@ -195,10 +200,13 @@ fn arm<'a, 'b, D: Diagram>(
 fn reserve_predicate<'a, 'b, D: Diagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
-    predicate_name: &'a str,
+    parsed_predicate: ParsedPredicate<'a>,
     num_terms: usize,
 ) -> Result<'a, Predicate> {
-    let predicate = context.context.reserve_predicate(predicate_name);
+    let predicate = match parsed_predicate {
+        ParsedPredicate::Name(predicate_name) => context.context.reserve_predicate(predicate_name),
+        ParsedPredicate::Number(predicate) => Predicate(predicate),
+    };
     if let Some(num_terms) = context.context.get_num_terms_for_predicate(predicate) {
         if num_terms != num_terms {
             return err_msg("Wrong number of terms for predicate", src);
@@ -212,52 +220,70 @@ fn reserve_predicate<'a, 'b, D: Diagram>(
     Ok((predicate, src))
 }
 
-fn node<'a, 'b, D: Diagram>(
+enum ParsedPredicate<'a> {
+    Name(&'a str),
+    Number(u64),
+}
+
+fn parse_predicate<'a, 'b, D: Diagram>(
+    src: &'a str,
+    _context: &'b mut ParseContext<D>,
+) -> Result<'a, ParsedPredicate<'a>> {
+    let rest = skip_whitespace(src);
+    if let Ok((name, rest)) = lowercase_identifier(rest) {
+        Ok((ParsedPredicate::Name(name), rest))
+    } else if let Ok((_, rest)) = character(rest, '@') {
+        let (number, rest) = unsigned_decimal_integer(rest)?;
+        Ok((ParsedPredicate::Number(number), rest))
+    } else {
+        err_msg("Not a predicate", src)
+    }
+}
+
+fn output_node<'a, 'b, D: Diagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
+    name: Option<&'a str>,
 ) -> Result<'a, NodeIndex> {
-    let rest = skip_whitespace(src);
-    let (first_word, rest) = lowercase_identifier(rest)?;
-    let mut rest = skip_whitespace(rest);
-    let name;
-    let predicate_name;
-    if let Ok((_, r)) = character(rest, ':') {
-        let r = skip_whitespace(r);
-        let (p, r) = lowercase_identifier(r)?;
-        rest = r;
-        name = Some(first_word);
-        predicate_name = p;
-    } else {
-        name = None;
-        predicate_name = first_word;
-    }
-    let node;
-    let match_target;
-    let refute_target;
-    if predicate_name == "output" {
-        rest = skip_whitespace(rest);
-        let (predicate_name, r) = lowercase_identifier(rest)?;
-        rest = skip_whitespace(r);
-        let (terms, r) = output_terms(rest, context)?;
-        rest = r;
-        let (predicate, _) = reserve_predicate(src, context, predicate_name, terms.len())?;
-        node = Node::Output { predicate, terms };
-        match_target = None;
-        refute_target = None;
-    } else {
-        let (terms, r) = match_terms(rest, context)?;
-        let (m_target, r) = arm(r, context)?;
-        match_target = m_target;
-        rest = r;
-        if let Ok((t, r)) = arm(rest, context) {
-            refute_target = Some(t);
-            rest = r;
-        } else {
-            refute_target = None;
+    let rest = prefix(src, "output")?;
+    let rest = skip_whitespace(rest);
+    let (predicate, rest) = parse_predicate(rest, context)?;
+    let rest = skip_whitespace(rest);
+    let (terms, rest) = output_terms(rest, context)?;
+    let predicate = reserve_predicate(src, context, predicate, terms.len())?.0;
+    let node = Node::Output { predicate, terms };
+    let node_index;
+    if let Some(name) = name {
+        let NodeInfo { defined, index } = context.context.reserve_node_name(name, context.diagram);
+        node_index = index;
+        if defined {
+            return err_msg("Node with this name was already defined", src);
         }
-        let (predicate, _) = reserve_predicate(src, context, predicate_name, terms.len())?;
-        node = Node::Match { predicate, terms };
+        *context.diagram.get_node_mut(index) = node;
+        if name == "root" {
+            context.diagram.set_root(index);
+        }
+    } else {
+        node_index = context.diagram.insert_node(node);
     }
+    Ok((node_index, rest))
+}
+
+fn match_node<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+    name: Option<&'a str>,
+) -> Result<'a, NodeIndex> {
+    let (predicate, rest) = parse_predicate(src, context)?;
+    let (terms, rest) = match_terms(rest, context)?;
+    let (match_target, rest) = arm(rest, context)?;
+    let (refute_target, rest) = if let Ok((t, r)) = arm(rest, context) {
+        (t, r)
+    } else {
+        (None, rest)
+    };
+    let predicate = reserve_predicate(src, context, predicate, terms.len())?.0;
+    let node = Node::Match { predicate, terms };
     if let Some(name) = name {
         let NodeInfo { defined, index } = context.context.reserve_node_name(name, context.diagram);
         if defined {
@@ -267,7 +293,7 @@ fn node<'a, 'b, D: Diagram>(
         if let Some(on_match) = match_target {
             context.diagram.set_on_match(index, on_match);
         }
-        if let Some(Some(on_refute)) = refute_target {
+        if let Some(on_refute) = refute_target {
             context.diagram.set_on_refute(index, on_refute);
         }
         if name == "root" {
@@ -279,11 +305,45 @@ fn node<'a, 'b, D: Diagram>(
         if let Some(on_match) = match_target {
             context.diagram.set_on_match(index, on_match);
         }
-        if let Some(Some(on_refute)) = refute_target {
+        if let Some(on_refute) = refute_target {
             context.diagram.set_on_refute(index, on_refute);
         }
         Ok((index, rest))
     }
+}
+
+fn node_without_name<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+    name: Option<&'a str>,
+) -> Result<'a, NodeIndex> {
+    let rest = skip_whitespace(src);
+    if let Ok((node, rest)) = output_node(rest, context, name) {
+        return Ok((node, rest));
+    };
+    return match_node(src, context, name);
+}
+
+fn node<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> Result<'a, NodeIndex> {
+    let rest = skip_whitespace(src);
+    if let Ok((name, rest)) = node_name(rest, context) {
+        node_without_name(rest, context, Some(name))
+    } else {
+        node_without_name(rest, context, None)
+    }
+}
+
+fn node_name<'a, 'b, D: Diagram>(
+    src: &'a str,
+    _context: &'b mut ParseContext<D>,
+) -> Result<'a, &'a str> {
+    let (name, rest) = lowercase_identifier(src)?;
+    let rest = skip_whitespace(rest);
+    let rest = character(rest, ':')?.1;
+    Ok((name, rest))
 }
 
 fn arg_list<'a, I, F: FnMut(&'a str) -> Result<'a, I>>(
@@ -340,7 +400,7 @@ fn match_term<'a, 'b, D: Diagram>(
     }
     let mut rest = skip_whitespace(rest);
     let mut target = None;
-    if let Ok((_, r)) = prefix(rest, "->") {
+    if let Ok(r) = prefix(rest, "->") {
         rest = skip_whitespace(r);
         let (reg, r) = register(rest, context)?;
         target = Some(reg);
@@ -387,7 +447,10 @@ fn value<'a, 'b, D: Diagram>(src: &'a str, _context: &'b mut ParseContext<D>) ->
     Ok((Value::Symbol(symbol), rest))
 }
 
-fn diagram<'a, 'b, D: Diagram>(src: &'a str, context: &'b mut ParseContext<D>) -> Result<'a, ()> {
+fn parse_diagram_inner<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> Result<'a, ()> {
     let mut rest = src;
     while rest != "" {
         let (_, r) = node(rest, context)?;
@@ -396,8 +459,11 @@ fn diagram<'a, 'b, D: Diagram>(src: &'a str, context: &'b mut ParseContext<D>) -
     Ok(((), rest))
 }
 
-pub fn parse_diagram(src: &str) -> std::result::Result<(GraphDiagram, Context), Error> {
-    let mut d = GraphDiagram::new(0);
+pub fn parse_diagram(
+    src: &str,
+    num_registers: usize,
+) -> std::result::Result<(GraphDiagram, Context), Error> {
+    let mut d = GraphDiagram::new(num_registers);
     let mut c = Context::new();
     let result;
     {
@@ -405,10 +471,26 @@ pub fn parse_diagram(src: &str) -> std::result::Result<(GraphDiagram, Context), 
             diagram: &mut d,
             context: &mut c,
         };
-        result = diagram(src, &mut context);
+        result = parse_diagram_inner(src, &mut context);
     }
     match result {
         Ok(_) => Ok((d, c)),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn update_diagram<'a, 'b, 'c, D: Diagram>(
+    src: &'a str,
+    diagram: &'b mut D,
+    context: &'a mut Context,
+) -> std::result::Result<(), Error<'a>> {
+    let result;
+    {
+        let mut context = ParseContext { diagram, context };
+        result = parse_diagram_inner(src, &mut context);
+    }
+    match result {
+        Ok(_) => Ok(()),
         Err(e) => Err(e),
     }
 }
@@ -648,7 +730,10 @@ mod tests {
             diagram: &mut d,
             context: &mut context,
         };
-        assert_eq!(diagram("root: output test(:1, :2)", &mut c), Ok(((), "")));
+        assert_eq!(
+            parse_diagram_inner("root: output test(:1, :2)", &mut c),
+            Ok(((), ""))
+        );
         assert_eq!(c.diagram, &expected_diagram);
     }
 
@@ -705,7 +790,7 @@ mod tests {
             context: &mut context,
         };
         assert_eq!(
-            diagram(
+            parse_diagram_inner(
                 r#"
                   root: a(:1 -> %0, _ -> %1) {
                     a(_, _ -> %1) {
@@ -719,6 +804,31 @@ mod tests {
         );
         println!("parsed = {:#?}", c.diagram);
         println!("expected = {:#?}", expected_diagram);
+        assert_eq!(c.diagram, &expected_diagram);
+    }
+
+    #[test]
+    fn can_parse_explicit_diagram() {
+        let mut expected_diagram = GraphDiagram::new(0);
+        let output_node = Node::Output {
+            predicate: Predicate(2),
+            terms: vec![
+                OutputTerm::Constant(Value::Symbol(1)),
+                OutputTerm::Constant(Value::Symbol(2)),
+            ],
+        };
+        let root = expected_diagram.insert_node(output_node);
+        expected_diagram.set_root(root);
+        let mut d = GraphDiagram::new(0);
+        let mut context = Context::new();
+        let mut c = ParseContext {
+            diagram: &mut d,
+            context: &mut context,
+        };
+        assert_eq!(
+            parse_diagram_inner("root: output @2(:1, :2)", &mut c),
+            Ok(((), ""))
+        );
         assert_eq!(c.diagram, &expected_diagram);
     }
 }
