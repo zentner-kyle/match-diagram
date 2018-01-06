@@ -63,9 +63,6 @@ pub enum Mutation {
     RemoveNode {
         node: NodeIndex,
     },
-    DuplicateTarget {
-        node: NodeIndex,
-    },
     SetEdge {
         edge: Edge,
         target: NodeIndex,

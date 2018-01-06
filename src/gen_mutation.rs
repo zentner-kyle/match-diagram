@@ -87,7 +87,7 @@ impl UniformMutationContext {
 
 impl GenMutation for UniformMutationContext {
     fn gen_mutation<R: Rng>(&mut self, rng: &mut R) -> Mutation {
-        match rng.gen_range(0, 11) {
+        match rng.gen_range(0, 10) {
             0 => Mutation::SetConstraintRegister {
                 term: self.gen_term(rng),
                 register: self.gen_register(rng),
@@ -119,22 +119,19 @@ impl GenMutation for UniformMutationContext {
             5 => Mutation::RemoveNode {
                 node: self.gen_node(rng),
             },
-            6 => Mutation::DuplicateTarget {
-                node: self.gen_node(rng),
-            },
-            7 => Mutation::SetEdge {
+            6 => Mutation::SetEdge {
                 edge: self.gen_edge(rng),
                 target: self.gen_node(rng),
             },
-            8 => Mutation::SetOutputRegister {
+            7 => Mutation::SetOutputRegister {
                 term: self.gen_term(rng),
                 register: self.gen_register(rng),
             },
-            9 => Mutation::SetOutputConstant {
+            8 => Mutation::SetOutputConstant {
                 term: self.gen_term(rng),
                 value: self.gen_value(rng),
             },
-            10 => Mutation::SetPredicate {
+            9 => Mutation::SetPredicate {
                 node: self.gen_node(rng),
                 predicate: self.gen_predicate(rng),
             },

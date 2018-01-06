@@ -3,6 +3,7 @@ use fixgraph::NodeIndex;
 use mutation::{Edge, Mutation, Term};
 use std::iter;
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MutationResult {
     phenotype_could_have_changed: bool,
     node_to_restart: Option<NodeIndex>,
@@ -106,6 +107,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             });
         }
         Mutation::RemoveNode { node } => {
+            if node == diagram.get_root() {
+                return None;
+            }
             let node_could_be_passthrough =
                 if let Node::Match { ref terms, .. } = *diagram.get_node(node) {
                     terms.iter().all(|term| term.target.is_none())
@@ -166,31 +170,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
                 });
             }
         }
-        Mutation::DuplicateTarget { node } => {
-            let maybe_match = diagram.get_on_match(node);
-            let maybe_refute = diagram.get_on_refute(node);
-            match (maybe_match, maybe_refute) {
-                (Some(on_match), Some(on_refute)) if on_match == on_refute => {
-                    let target = on_match;
-                    let duplicate = diagram.get_node(target).clone();
-                    let duplicate = diagram.insert_node(duplicate);
-                    diagram.set_on_match(node, duplicate);
-                    if let Some(target_on_match) = diagram.get_on_match(target) {
-                        diagram.set_on_match(duplicate, target_on_match);
-                    }
-                    if let Some(target_on_refute) = diagram.get_on_refute(target) {
-                        diagram.set_on_refute(duplicate, target_on_refute);
-                    }
-                    return Some(MutationResult {
-                        phenotype_could_have_changed: false,
-                        node_to_restart: None,
-                    });
-                }
-                _ => {
-                    return None;
-                }
-            }
-        }
         Mutation::SetEdge { edge, target } => match edge {
             Edge::Root => {
                 diagram.set_root(target);
@@ -207,7 +186,7 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
                 })
             }
             Edge::Refute(src) => {
-                diagram.set_on_match(src, target);
+                diagram.set_on_refute(src, target);
                 Some(MutationResult {
                     phenotype_could_have_changed: true,
                     node_to_restart: Some(src),
@@ -270,17 +249,20 @@ mod tests {
     use predicate::Predicate;
     use value::Value;
 
+    fn diagram_literal(src: &str, num_registers: usize) -> GraphDiagram {
+        parse_diagram(src, num_registers).unwrap().0
+    }
+
     #[test]
     fn can_set_constraint_register() {
-        let mut diagram = parse_diagram(
+        let mut diagram = diagram_literal(
             r#"
         root: @0(_ -> %0, _ -> %1) {
           output @1(%0, %1)
         }
         "#,
             2,
-        ).unwrap()
-            .0;
+        );
         let root = diagram.get_root();
         apply_mutation(
             &mut diagram,
@@ -297,15 +279,14 @@ mod tests {
 
     #[test]
     fn can_set_constraint_constant() {
-        let mut diagram = parse_diagram(
+        let mut diagram = diagram_literal(
             r#"
         root: @0(_ -> %0, _ -> %1) {
           output @1(%0, %1)
         }
         "#,
             2,
-        ).unwrap()
-            .0;
+        );
         let root = diagram.get_root();
         apply_mutation(
             &mut diagram,
@@ -322,15 +303,14 @@ mod tests {
 
     #[test]
     fn can_set_constraint_free() {
-        let mut diagram = parse_diagram(
+        let mut diagram = diagram_literal(
             r#"
         root: @0(:0 -> %0, _ -> %1) {
           output @1(%0, %1)
         }
         "#,
             2,
-        ).unwrap()
-            .0;
+        );
         let root = diagram.get_root();
         apply_mutation(
             &mut diagram,
@@ -346,15 +326,14 @@ mod tests {
 
     #[test]
     fn set_target() {
-        let mut diagram = parse_diagram(
+        let mut diagram = diagram_literal(
             r#"
         root: @0(_ -> %0, _ -> %1) {
           output @1(%0, %1)
         }
         "#,
             2,
-        ).unwrap()
-            .0;
+        );
         let root = diagram.get_root();
         apply_mutation(
             &mut diagram,
@@ -364,5 +343,335 @@ mod tests {
             },
         );
         assert_eq!(*diagram.get_node(root), node_literal("@0(_, _ -> %1)"));
+    }
+
+    #[test]
+    fn insert_passthrough() {
+        let (mut diagram, context) = parse_diagram(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: output @1(%0, %1)
+        }
+        "#,
+            2,
+        ).unwrap();
+        let root = diagram.get_root();
+        apply_mutation(
+            &mut diagram,
+            Mutation::InsertPassthrough {
+                predicate: Predicate(1),
+                num_terms: 2,
+                edge: Edge::Match(root),
+            },
+        );
+        assert_eq!(
+            *diagram.get_node(diagram.get_on_match(root).unwrap()),
+            node_literal("@1(_, _)")
+        );
+        let a = context.node_name_to_info.get("a").unwrap().index;
+        assert_eq!(
+            diagram.get_on_match(diagram.get_on_match(root).unwrap()),
+            Some(a)
+        );
+        assert_eq!(
+            diagram.get_on_refute(diagram.get_on_match(root).unwrap()),
+            Some(a)
+        );
+    }
+
+    #[test]
+    fn insert_passthrough_at_root() {
+        let mut diagram = diagram_literal(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: output @1(%0, %1)
+        }
+        "#,
+            2,
+        );
+        let root = diagram.get_root();
+        apply_mutation(
+            &mut diagram,
+            Mutation::InsertPassthrough {
+                predicate: Predicate(1),
+                num_terms: 2,
+                edge: Edge::Root,
+            },
+        );
+        let new_root = diagram.get_root();
+        assert_eq!(*diagram.get_node(new_root), node_literal("@1(_, _)"));
+        assert_eq!(diagram.get_on_match(new_root), Some(root));
+        assert_eq!(diagram.get_on_refute(new_root), Some(root));
+    }
+
+    #[test]
+    fn remove_node_not_passthrough() {
+        let (mut diagram, context) = parse_diagram(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: @1(_ -> %0, _ -> %1) {
+            b: output @2(%0, %1)
+          } { b }
+        } { a }
+        "#,
+            2,
+        ).unwrap();
+        println!("original diagram = {:#?}", diagram);
+        let root = diagram.get_root();
+        let a = context.node_name_to_info.get("a").unwrap().index;
+        assert_eq!(
+            apply_mutation(&mut diagram, Mutation::RemoveNode { node: a },),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: None,
+            })
+        );
+        println!("mutated diagram = {:#?}", diagram);
+        let b = context.node_name_to_info.get("b").unwrap().index;
+        println!("root = {:?}", root);
+        assert_eq!(diagram.get_on_match(root), Some(b));
+        assert_eq!(diagram.get_on_match(root), Some(b));
+    }
+
+    #[test]
+    fn remove_node_passthrough() {
+        let (mut diagram, context) = parse_diagram(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: @1(_, _) {
+            b: output @2(%0, %1)
+          } { b }
+        } { a }
+        "#,
+            2,
+        ).unwrap();
+        println!("original diagram = {:#?}", diagram);
+        let root = diagram.get_root();
+        let a = context.node_name_to_info.get("a").unwrap().index;
+        assert_eq!(
+            apply_mutation(&mut diagram, Mutation::RemoveNode { node: a },),
+            Some(MutationResult {
+                phenotype_could_have_changed: false,
+                node_to_restart: None,
+            })
+        );
+        println!("mutated diagram = {:#?}", diagram);
+        let b = context.node_name_to_info.get("b").unwrap().index;
+        println!("root = {:?}", root);
+        assert_eq!(diagram.get_on_match(root), Some(b));
+        assert_eq!(diagram.get_on_match(root), Some(b));
+    }
+
+    #[test]
+    fn remove_node_root() {
+        let mut diagram = diagram_literal(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: output @1(%0, %1)
+        }
+        "#,
+            2,
+        );
+        let root = diagram.get_root();
+        assert_eq!(
+            apply_mutation(&mut diagram, Mutation::RemoveNode { node: root },),
+            None
+        );
+    }
+
+    #[test]
+    fn set_edge_root() {
+        let (mut diagram, context) = parse_diagram(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: @1(_, _) {
+            b: output @2(%0, %1)
+          } { b }
+        } { a }
+        "#,
+            2,
+        ).unwrap();
+        let a = context.node_name_to_info.get("a").unwrap().index;
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetEdge {
+                    edge: Edge::Root,
+                    target: a,
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: None,
+            })
+        );
+        assert_eq!(diagram.get_root(), a);
+    }
+
+    #[test]
+    fn set_edge_match() {
+        let (mut diagram, context) = parse_diagram(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: @1(_, _) {
+            b: output @2(%0, %1)
+          } { b }
+        } { a }
+        "#,
+            2,
+        ).unwrap();
+        let a = context.node_name_to_info.get("a").unwrap().index;
+        let b = context.node_name_to_info.get("b").unwrap().index;
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetEdge {
+                    edge: Edge::Match(a),
+                    target: a,
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: Some(a),
+            })
+        );
+        assert_eq!(diagram.get_on_match(a), Some(a));
+        assert_eq!(diagram.get_on_refute(a), Some(b));
+    }
+
+    #[test]
+    fn set_edge_refute() {
+        let (mut diagram, context) = parse_diagram(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: @1(_, _) {
+            b: output @2(%0, %1)
+          } { b }
+        } { a }
+        "#,
+            2,
+        ).unwrap();
+        let a = context.node_name_to_info.get("a").unwrap().index;
+        let b = context.node_name_to_info.get("b").unwrap().index;
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetEdge {
+                    edge: Edge::Refute(a),
+                    target: a,
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: Some(a),
+            })
+        );
+        assert_eq!(diagram.get_on_refute(a), Some(a));
+        assert_eq!(diagram.get_on_match(a), Some(b));
+    }
+
+    #[test]
+    fn set_output_register() {
+        let mut diagram = diagram_literal(
+            r#"
+        root: output @1(:2, :2) 
+        "#,
+            2,
+        );
+        let root = diagram.get_root();
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetOutputRegister {
+                    term: Term(root, 0),
+                    register: 1,
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: Some(root),
+            })
+        );
+        assert_eq!(*diagram.get_node(root), node_literal("output @1(%1, :2)"));
+    }
+
+    #[test]
+    fn set_output_constant() {
+        let mut diagram = diagram_literal(
+            r#"
+        root: output @1(:2, :2) 
+        "#,
+            2,
+        );
+        let root = diagram.get_root();
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetOutputConstant {
+                    term: Term(root, 0),
+                    value: Value::Symbol(1),
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: Some(root),
+            })
+        );
+        assert_eq!(*diagram.get_node(root), node_literal("output @1(:1, :2)"));
+    }
+
+    #[test]
+    fn set_predicate_output() {
+        let mut diagram = diagram_literal(
+            r#"
+        root: output @1(:2, :2) 
+        "#,
+            2,
+        );
+        let root = diagram.get_root();
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetPredicate {
+                    node: root,
+                    predicate: Predicate(0),
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: Some(root),
+            })
+        );
+        assert_eq!(*diagram.get_node(root), node_literal("output @0(:2, :2)"));
+    }
+
+    #[test]
+    fn set_predicate_match() {
+        let mut diagram = diagram_literal(
+            r#"
+        root: @0(_ -> %0, _ -> %1) {
+          a: output @1(%0, %1)
+        }
+        "#,
+            2,
+        );
+        let root = diagram.get_root();
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::SetPredicate {
+                    node: root,
+                    predicate: Predicate(1),
+                }
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: Some(root),
+            })
+        );
+        assert_eq!(
+            *diagram.get_node(root),
+            node_literal("@1(_ -> %0, _ -> %1)")
+        );
     }
 }
