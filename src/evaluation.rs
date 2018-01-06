@@ -1,12 +1,17 @@
 use std::iter;
 
 use database::Database;
-use diagram::{Diagram, MatchTermConstraint, Node, OutputTerm, PropagateOutput};
+use diagram::{Diagram, MatchTermConstraint, Node, OutputTerm};
 use fact::Fact;
 use fixgraph::NodeIndex;
 use registers::{RegisterFile, RegisterSet};
 use simple_query::{SimpleQuery, SimpleQueryTerm};
 use value::Value;
+
+enum PropagateOutput {
+    Registers(RegisterSet, RegisterSet),
+    Database(Database),
+}
 
 fn propagate<D: Diagram>(
     diagram: &D,

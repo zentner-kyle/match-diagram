@@ -35,11 +35,6 @@ pub enum Node {
     },
 }
 
-pub enum PropagateOutput {
-    Registers(RegisterSet, RegisterSet),
-    Database(Database),
-}
-
 pub trait Diagram {
     fn get_root(&self) -> NodeIndex;
 
