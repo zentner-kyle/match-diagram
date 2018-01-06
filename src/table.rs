@@ -39,4 +39,31 @@ impl Table {
         self.num_rows += 1;
         result
     }
+
+    pub fn iter(&self) -> Iter {
+        Iter {
+            table: self,
+            row: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Iter<'a> {
+    table: &'a Table,
+    row: usize,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a [Value];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.row < self.table.num_rows() {
+            let result = self.table.row(self.row);
+            self.row += 1;
+            Some(result)
+        } else {
+            None
+        }
+    }
 }

@@ -5,6 +5,7 @@ use fact::Fact;
 use index::{Index, IndexIter};
 use predicate::Predicate;
 use simple_query::{SimpleQuery, SimpleQueryTerm};
+use table;
 use table::Table;
 use value::Value;
 
@@ -138,12 +139,41 @@ impl Database {
         }
     }
 
+    pub fn facts_for_predicate(&self, predicate: Predicate) -> PredicateIter {
+        PredicateIter {
+            predicate,
+            inner: self.tables.get(&predicate).map(|t| t.iter()),
+        }
+    }
+
     pub fn all_facts(&self) -> AllFactIter {
         AllFactIter {
             tables_iter: self.tables.iter(),
             current_table: None,
             row: 0,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PredicateIter<'a> {
+    predicate: Predicate,
+    inner: Option<table::Iter<'a>>,
+}
+
+impl<'a> Iterator for PredicateIter<'a> {
+    type Item = Fact<'a>;
+
+    fn next(&mut self) -> Option<Fact<'a>> {
+        if let Some(ref mut iter) = self.inner {
+            if let Some(values) = iter.next() {
+                return Some(Fact {
+                    predicate: self.predicate,
+                    values,
+                });
+            }
+        }
+        return None;
     }
 }
 

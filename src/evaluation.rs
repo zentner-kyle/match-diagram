@@ -26,49 +26,32 @@ fn propagate<D: Diagram>(
         } => {
             let mut match_set = RegisterSet::new(registers.num_registers());
             let mut refute_set = RegisterSet::new(registers.num_registers());
-            let mut query_terms = Vec::with_capacity(terms.len());
             for register_file in registers.iter() {
-                for term in terms {
-                    query_terms.push(match &term.constraint {
-                        &MatchTermConstraint::Free => SimpleQueryTerm::Free,
-                        &MatchTermConstraint::Constant(ref value) => {
-                            SimpleQueryTerm::Constant { value }
-                        }
-                        &MatchTermConstraint::Register(index) => {
-                            if index >= register_file.len() {
-                                SimpleQueryTerm::Constant { value: &Value::Nil }
-                            } else {
-                                if let Some(ref value) = register_file[index] {
-                                    SimpleQueryTerm::Constant { value }
-                                } else {
-                                    SimpleQueryTerm::Free
+                for fact in database.facts_for_predicate(predicate) {
+                    let mut result_registers = register_file.clone();
+                    let mut refuted = false;
+                    for (term, value) in terms.iter().zip(fact.values) {
+                        match term.constraint {
+                            MatchTermConstraint::Free => {}
+                            MatchTermConstraint::Constant(ref v) => if v != value {
+                                refuted = true;
+                            },
+                            MatchTermConstraint::Register(reg) => {
+                                if register_file[reg].as_ref() != Some(value) {
+                                    refuted = true;
                                 }
                             }
                         }
-                    });
-                }
-                let mut query_iter = database
-                    .simple_query(SimpleQuery {
-                        predicate,
-                        terms: &query_terms,
-                    })
-                    .peekable();
-                if query_iter.peek().is_some() {
-                    for fact in query_iter {
-                        let mut r = register_file.clone();
-                        for (term, value) in terms.iter().zip(fact.values.iter()) {
-                            if let Some(target) = term.target {
-                                if target < r.len() {
-                                    r[target] = Some(value.clone());
-                                }
-                            };
+                        if let Some(target) = term.target {
+                            result_registers[target] = Some(value.clone());
                         }
-                        match_set.push(r);
                     }
-                } else {
-                    refute_set.push(register_file.clone());
+                    if refuted {
+                        refute_set.push(result_registers);
+                    } else {
+                        match_set.push(result_registers);
+                    }
                 }
-                query_terms.clear();
             }
             PropagateOutput::Registers(match_set, refute_set)
         }
