@@ -1,7 +1,7 @@
 use predicate::Predicate;
 use value::Value;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Copy)]
 pub struct Fact<'a> {
     pub predicate: Predicate,
     pub values: &'a [Value],
