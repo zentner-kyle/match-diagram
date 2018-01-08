@@ -26,7 +26,7 @@ impl GraphDiagram {
     }
 
     pub fn evaluate(&self, input: &Database) -> Database {
-        Evaluation::run(self, input, self.num_registers).total_db
+        Evaluation::run(self, input).total_db
     }
 }
 

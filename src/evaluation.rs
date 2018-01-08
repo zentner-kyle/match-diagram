@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::iter;
 
 use database::Database;
@@ -116,12 +117,22 @@ impl Evaluation {
         }
     }
 
-    pub fn run<D: Diagram>(diagram: &D, input: &Database, num_registers: usize) -> Self {
+    pub fn run<D: Diagram>(diagram: &D, input: &Database) -> Self {
+        let num_registers = diagram.get_num_registers();
         let mut eval = Self::new(diagram, num_registers);
         let root = diagram.get_root();
         eval.input_sets[root.0].push(RegisterFile::new(num_registers));
         eval.start_at(diagram, root, input);
+        eval.build_total_db();
         eval
+    }
+
+    pub fn build_total_db(&mut self) {
+        for db in self.output_dbs.iter().filter_map(|db| db.as_ref()) {
+            for fact in db.all_facts() {
+                self.total_db.insert_fact(fact);
+            }
+        }
     }
 
     pub fn start_at<D: Diagram>(&mut self, diagram: &D, node: NodeIndex, input: &Database) {
@@ -165,10 +176,54 @@ impl Evaluation {
                 }
             }
         }
-        for db in self.output_dbs.iter().filter_map(|db| db.as_ref()) {
-            for fact in db.all_facts() {
-                self.total_db.insert_fact(fact);
+    }
+
+    pub fn rerun_from<D: Diagram>(
+        &self,
+        diagram: &D,
+        input: &Database,
+        start: &[NodeIndex],
+    ) -> Option<Self> {
+        // Invalidate the transitive closure from starting nodes.
+        // If the transitive closure of the starting nodes includes any of the starting nodes,
+        // restart from the root.
+        let num_registers = diagram.get_num_registers();
+        let start_set: HashSet<NodeIndex> = start.iter().cloned().collect();
+        if start_set.len() == 0 {
+            return None;
+        }
+        let mut eval = self.clone();
+        // TODO(zentner): Check if nothing has changed at the start nodes, and return None.
+        eval.total_db = Database::new();
+        let mut to_invalidate = start.to_owned();
+        let mut invalidated = HashSet::new();
+        while let Some(node) = to_invalidate.pop() {
+            if invalidated.contains(&node) {
+                continue;
+            }
+            eval.output_sets[node.0] = (
+                RegisterSet::new(num_registers),
+                RegisterSet::new(num_registers),
+            );
+            eval.output_dbs[node.0] = None;
+            invalidated.insert(node);
+            if let Some(on_match) = diagram.get_on_match(node) {
+                if start_set.contains(&on_match) {
+                    return Some(Evaluation::run(diagram, input));
+                }
+                to_invalidate.push(on_match);
+            }
+            if let Some(on_refute) = diagram.get_on_refute(node) {
+                if start_set.contains(&on_refute) {
+                    return Some(Evaluation::run(diagram, input));
+                }
+                to_invalidate.push(on_refute);
             }
         }
+        for node in invalidated.into_iter() {
+            eval.start_at(diagram, node, input);
+        }
+        eval.build_total_db();
+        return Some(eval);
     }
 }
