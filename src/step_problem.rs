@@ -6,10 +6,10 @@ use std::iter;
 use database::Database;
 use diagram::{Diagram, Node, OutputTerm};
 use evaluation::Evaluation;
-use fixgraph::NodeIndex;
 use gen_mutation::{GenMutation, UniformMutationContext};
 use graph_diagram::GraphDiagram;
 use mutate::{apply_mutation, MutationResult};
+use node_index::NodeIndex;
 use predicate::Predicate;
 use value::Value;
 
@@ -37,6 +37,7 @@ impl DiagramIndividual {
                     .collect(),
             });
         }
+        diagram.set_root(NodeIndex(0));
         let evaluations = iter::repeat(Evaluation::new(&diagram, num_registers))
             .take(num_evaluations)
             .collect();

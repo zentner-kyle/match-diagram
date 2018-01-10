@@ -1,4 +1,4 @@
-use fixgraph::NodeIndex;
+use node_index::NodeIndex;
 use predicate::Predicate;
 use value::Value;
 

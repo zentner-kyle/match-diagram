@@ -4,7 +4,7 @@ use std::iter;
 use database::Database;
 use diagram::{Diagram, MatchTermConstraint, Node, OutputTerm};
 use fact::Fact;
-use fixgraph::NodeIndex;
+use node_index::NodeIndex;
 use registers::{RegisterFile, RegisterSet};
 use simple_query::{SimpleQuery, SimpleQueryTerm};
 use value::Value;

@@ -15,6 +15,7 @@ mod graph_diagram;
 mod index;
 mod mutate;
 mod mutation;
+mod node_index;
 mod parse;
 mod patch_diagram;
 mod predicate;

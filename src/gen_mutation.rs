@@ -1,7 +1,7 @@
 use rand::Rng;
 
-use fixgraph::NodeIndex;
 use mutation::{Edge, Mutation, Term};
+use node_index::NodeIndex;
 use predicate::Predicate;
 use std::collections::HashMap;
 use value::Value;

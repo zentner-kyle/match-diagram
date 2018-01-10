@@ -1,5 +1,5 @@
 use database::Database;
-use fixgraph::NodeIndex;
+use node_index::NodeIndex;
 use predicate::Predicate;
 use registers::RegisterSet;
 use value::Value;

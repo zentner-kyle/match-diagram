@@ -1,6 +1,6 @@
 use diagram::{Diagram, Node};
-use fixgraph::NodeIndex;
 use graph_diagram::GraphDiagram;
+use node_index::NodeIndex;
 use tiny_map;
 use tiny_map::TinyMap;
 

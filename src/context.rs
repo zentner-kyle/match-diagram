@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::collections::hash_map;
 
 use diagram::{Diagram, Node};
-use fixgraph::NodeIndex;
+use node_index::NodeIndex;
 use predicate::Predicate;
 
 #[derive(Clone, Debug)]

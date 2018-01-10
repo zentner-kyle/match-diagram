@@ -3,8 +3,7 @@ use std::iter;
 use std::slice;
 use std::usize;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NodeIndex(pub usize);
+use node_index::NodeIndex;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EdgeIndex(pub usize);

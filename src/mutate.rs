@@ -1,6 +1,6 @@
 use diagram::{Diagram, MatchTerm, MatchTermConstraint, Node, OutputTerm};
-use fixgraph::NodeIndex;
 use mutation::{Edge, Mutation, Term};
+use node_index::NodeIndex;
 use std::iter;
 
 #[derive(Debug, PartialEq, Eq)]

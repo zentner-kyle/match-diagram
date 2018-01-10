@@ -3,13 +3,29 @@ use std::collections::{hash_map, HashMap};
 use database::Database;
 use diagram::{Diagram, Node};
 use evaluation::Evaluation;
-use fixgraph::{EdgeIndex, FixGraph, NodeIndex};
+use fixgraph::{EdgeIndex, FixGraph};
+use node_index::NodeIndex;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Edges {
+    on_match: Vec<NodeIndex>,
+    on_refute: Vec<NodeIndex>,
+}
+
+impl Edges {
+    fn new() -> Self {
+        Edges {
+            on_match: Vec::new(),
+            on_refute: Vec::new(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphDiagram {
     num_registers: usize,
-    root: NodeIndex,
-    graph: FixGraph<Node>,
+    root: Vec<NodeIndex>,
+    graph: Vec<(Node, Edges)>,
     match_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
     refute_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
 }
@@ -18,8 +34,8 @@ impl GraphDiagram {
     pub fn new(num_registers: usize) -> Self {
         GraphDiagram {
             num_registers,
-            root: NodeIndex(0),
-            graph: FixGraph::new(2),
+            root: Vec::new(),
+            graph: Vec::new(),
             match_sources: HashMap::new(),
             refute_sources: HashMap::new(),
         }
@@ -27,6 +43,22 @@ impl GraphDiagram {
 
     pub fn evaluate(&self, input: &Database) -> Database {
         Evaluation::run(self, input).total_db
+    }
+
+    pub fn on_match(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        &self.graph[node.0].1.on_match
+    }
+
+    pub fn on_refute(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        &self.graph[node.0].1.on_refute
+    }
+
+    pub fn on_match_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        &mut self.graph[node.0].1.on_match
+    }
+
+    pub fn on_refute_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        &mut self.graph[node.0].1.on_refute
     }
 }
 
@@ -64,30 +96,37 @@ fn remove_source(
 
 impl Diagram for GraphDiagram {
     fn get_root(&self) -> NodeIndex {
-        self.root
+        self.root[0]
     }
 
     fn set_root(&mut self, root: NodeIndex) {
-        self.root = root
+        self.root.clear();
+        self.root.push(root);
     }
 
     fn insert_node(&mut self, node: Node) -> NodeIndex {
-        self.graph.push(node)
+        let result = NodeIndex(self.len());
+        self.graph.push((node, Edges::new()));
+        result
     }
 
     fn get_node(&self, index: NodeIndex) -> &Node {
-        self.graph.get_node(index)
+        &self.graph[index.0].0
     }
 
     fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node {
-        self.graph.get_node_mut(index)
+        &mut self.graph[index.0].0
     }
 
     fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex) {
         if let Some(target) = self.get_on_match(src) {
             remove_source(&mut self.match_sources, src, target);
         }
-        self.graph.set_edge_target(src, EdgeIndex(1), Some(target));
+        {
+            let edges = self.on_match_mut(src);
+            edges.clear();
+            edges.push(target);
+        }
         insert_source(&mut self.match_sources, src, target);
     }
 
@@ -95,7 +134,11 @@ impl Diagram for GraphDiagram {
         if let Some(target) = self.get_on_refute(src) {
             remove_source(&mut self.refute_sources, src, target);
         }
-        self.graph.set_edge_target(src, EdgeIndex(0), Some(target));
+        {
+            let edges = self.on_refute_mut(src);
+            edges.clear();
+            edges.push(target);
+        }
         insert_source(&mut self.refute_sources, src, target);
     }
 
@@ -103,22 +146,22 @@ impl Diagram for GraphDiagram {
         if let Some(target) = self.get_on_match(src) {
             remove_source(&mut self.match_sources, src, target);
         }
-        self.graph.set_edge_target(src, EdgeIndex(1), None);
+        self.on_match_mut(src).clear();
     }
 
     fn clear_on_refute(&mut self, src: NodeIndex) {
         if let Some(target) = self.get_on_refute(src) {
             remove_source(&mut self.refute_sources, src, target);
         }
-        self.graph.set_edge_target(src, EdgeIndex(0), None);
+        self.on_refute_mut(src).clear();
     }
 
     fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex> {
-        self.graph.get_edge_target(src, EdgeIndex(1))
+        self.on_match(src).get(0).cloned()
     }
 
     fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
-        self.graph.get_edge_target(src, EdgeIndex(0))
+        self.on_refute(src).get(0).cloned()
     }
 
     fn len(&self) -> usize {
