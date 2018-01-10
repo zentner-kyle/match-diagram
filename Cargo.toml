@@ -6,3 +6,6 @@ authors = ["K. Zentner <zentner.kyle@gmail.com>"]
 [dependencies]
 rand = "0.4.1"
 unicode-xid = "0.1.0"
+
+[dependencies.evolution-strategies]
+path = "../evolution-strategies"

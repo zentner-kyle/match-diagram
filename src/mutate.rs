@@ -5,8 +5,8 @@ use std::iter;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MutationResult {
-    phenotype_could_have_changed: bool,
-    node_to_restart: Option<NodeIndex>,
+    pub phenotype_could_have_changed: bool,
+    pub node_to_restart: Option<NodeIndex>,
 }
 
 fn changed_node(node: NodeIndex) -> Option<MutationResult> {
@@ -22,6 +22,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             register,
         } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].constraint = MatchTermConstraint::Register(register);
@@ -34,6 +37,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             value,
         } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].constraint = MatchTermConstraint::Constant(value);
@@ -45,6 +51,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
         Mutation::SetConstraintFree {
             term: Term(node, term),
         } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].constraint = MatchTermConstraint::Free;
@@ -57,6 +66,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             register,
         } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].target = register;
@@ -70,6 +82,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             num_terms,
             edge,
         } => {
+            if diagram.len() > 2 {
+                return None;
+            }
             let node = Node::Match {
                 predicate,
                 terms: iter::repeat(MatchTerm {
@@ -107,6 +122,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             });
         }
         Mutation::RemoveNode { node } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if node == diagram.get_root() {
                 return None;
             }
@@ -173,30 +191,39 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
         Mutation::SetEdge { edge, target } => match edge {
             Edge::Root => {
                 diagram.set_root(target);
-                Some(MutationResult {
+                return Some(MutationResult {
                     phenotype_could_have_changed: true,
                     node_to_restart: None,
-                })
+                });
             }
             Edge::Match(src) => {
+                if src.0 >= diagram.len() || target.0 >= diagram.len() {
+                    return None;
+                }
                 diagram.set_on_match(src, target);
-                Some(MutationResult {
+                return Some(MutationResult {
                     phenotype_could_have_changed: true,
                     node_to_restart: Some(src),
-                })
+                });
             }
             Edge::Refute(src) => {
+                if src.0 >= diagram.len() || target.0 >= diagram.len() {
+                    return None;
+                }
                 diagram.set_on_refute(src, target);
-                Some(MutationResult {
+                return Some(MutationResult {
                     phenotype_could_have_changed: true,
                     node_to_restart: Some(src),
-                })
+                });
             }
         },
         Mutation::SetOutputRegister {
             term: Term(node, term),
             register,
         } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if let Node::Output { ref mut terms, .. } = *diagram.get_node_mut(node) {
                 terms[term] = OutputTerm::Register(register);
                 Some(MutationResult {
@@ -211,6 +238,9 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             value,
         } => {
+            if node.0 >= diagram.len() {
+                return None;
+            }
             if let Node::Output { ref mut terms, .. } = *diagram.get_node_mut(node) {
                 terms[term] = OutputTerm::Constant(value);
                 Some(MutationResult {
@@ -221,22 +251,27 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
                 None
             }
         }
-        Mutation::SetPredicate { node, predicate } => match *diagram.get_node_mut(node) {
-            Node::Output {
-                predicate: ref mut p,
-                ..
+        Mutation::SetPredicate { node, predicate } => {
+            if node.0 >= diagram.len() {
+                return None;
             }
-            | Node::Match {
-                predicate: ref mut p,
-                ..
-            } => {
-                *p = predicate;
-                Some(MutationResult {
-                    phenotype_could_have_changed: true,
-                    node_to_restart: Some(node),
-                })
-            }
-        },
+            return match *diagram.get_node_mut(node) {
+                Node::Output {
+                    predicate: ref mut p,
+                    ..
+                }
+                | Node::Match {
+                    predicate: ref mut p,
+                    ..
+                } => {
+                    *p = predicate;
+                    Some(MutationResult {
+                        phenotype_could_have_changed: true,
+                        node_to_restart: Some(node),
+                    })
+                }
+            };
+        }
     }
 }
 

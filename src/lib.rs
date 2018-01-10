@@ -20,6 +20,7 @@ mod patch_diagram;
 mod predicate;
 mod registers;
 mod simple_query;
+mod step_problem;
 mod table;
 mod tiny_map;
 mod value;

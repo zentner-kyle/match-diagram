@@ -6,6 +6,7 @@ use predicate::Predicate;
 use std::collections::HashMap;
 use value::Value;
 
+#[derive(Debug, Clone)]
 pub struct UniformMutationContext {
     num_nodes: usize,
     num_terms: usize,
@@ -16,7 +17,7 @@ pub struct UniformMutationContext {
 }
 
 pub trait GenMutation {
-    fn gen_mutation<R: Rng>(&mut self, rng: &mut R) -> Mutation;
+    fn gen_mutation<R: Rng>(&self, rng: &mut R) -> Mutation;
 }
 
 fn nonzero(value: usize) -> usize {
@@ -86,7 +87,7 @@ impl UniformMutationContext {
 }
 
 impl GenMutation for UniformMutationContext {
-    fn gen_mutation<R: Rng>(&mut self, rng: &mut R) -> Mutation {
+    fn gen_mutation<R: Rng>(&self, rng: &mut R) -> Mutation {
         match rng.gen_range(0, 10) {
             0 => Mutation::SetConstraintRegister {
                 term: self.gen_term(rng),
@@ -107,7 +108,23 @@ impl GenMutation for UniformMutationContext {
                     None
                 },
             },
-            4 => {
+            4 => Mutation::SetEdge {
+                edge: self.gen_edge(rng),
+                target: self.gen_node(rng),
+            },
+            5 => Mutation::SetOutputRegister {
+                term: self.gen_term(rng),
+                register: self.gen_register(rng),
+            },
+            6 => Mutation::SetOutputConstant {
+                term: self.gen_term(rng),
+                value: self.gen_value(rng),
+            },
+            7 => Mutation::SetPredicate {
+                node: self.gen_node(rng),
+                predicate: self.gen_predicate(rng),
+            },
+            8 => {
                 let predicate = self.gen_predicate(rng);
                 let num_terms = *self.num_terms_for_predicate.get(&predicate).unwrap();
                 Mutation::InsertPassthrough {
@@ -116,24 +133,8 @@ impl GenMutation for UniformMutationContext {
                     edge: self.gen_edge(rng),
                 }
             }
-            5 => Mutation::RemoveNode {
+            9 => Mutation::RemoveNode {
                 node: self.gen_node(rng),
-            },
-            6 => Mutation::SetEdge {
-                edge: self.gen_edge(rng),
-                target: self.gen_node(rng),
-            },
-            7 => Mutation::SetOutputRegister {
-                term: self.gen_term(rng),
-                register: self.gen_register(rng),
-            },
-            8 => Mutation::SetOutputConstant {
-                term: self.gen_term(rng),
-                value: self.gen_value(rng),
-            },
-            9 => Mutation::SetPredicate {
-                node: self.gen_node(rng),
-                predicate: self.gen_predicate(rng),
             },
             _ => unreachable!(),
         }

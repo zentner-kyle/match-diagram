@@ -1,6 +1,6 @@
 use value::Value;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Table {
     num_columns: usize,
     num_rows: usize,

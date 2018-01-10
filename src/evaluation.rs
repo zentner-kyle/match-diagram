@@ -117,6 +117,17 @@ impl Evaluation {
         }
     }
 
+    fn grow(&mut self, num_nodes: usize, num_registers: usize) {
+        for _ in self.input_sets.len()..num_nodes {
+            self.input_sets.push(RegisterSet::new(num_registers));
+            self.output_sets.push((
+                RegisterSet::new(num_registers),
+                RegisterSet::new(num_registers),
+            ));
+            self.output_dbs.push(None);
+        }
+    }
+
     pub fn run<D: Diagram>(diagram: &D, input: &Database) -> Self {
         let num_registers = diagram.get_num_registers();
         let mut eval = Self::new(diagram, num_registers);
@@ -138,6 +149,23 @@ impl Evaluation {
     pub fn start_at<D: Diagram>(&mut self, diagram: &D, node: NodeIndex, input: &Database) {
         let mut pending_nodes = vec![node];
         while let Some(node_index) = pending_nodes.pop() {
+            if node_index == diagram.get_root() {
+                self.input_sets[node_index.0].push(RegisterFile::new(diagram.get_num_registers()));
+            }
+            if let Some(match_sources) = diagram.get_match_sources(node_index) {
+                for match_source in match_sources {
+                    for regs in self.output_sets[match_source.0].0.iter() {
+                        self.input_sets[node_index.0].push(regs.clone());
+                    }
+                }
+            }
+            if let Some(refute_sources) = diagram.get_refute_sources(node_index) {
+                for refute_source in refute_sources {
+                    for regs in self.output_sets[refute_source.0].1.iter() {
+                        self.input_sets[node_index.0].push(regs.clone());
+                    }
+                }
+            }
             match propagate(diagram, node_index, input, &self.input_sets[node_index.0]) {
                 PropagateOutput::Registers(match_set, refute_set) => {
                     let (ref mut old_match_set, ref mut old_refute_set) =
@@ -193,6 +221,7 @@ impl Evaluation {
             return None;
         }
         let mut eval = self.clone();
+        eval.grow(diagram.len(), diagram.get_num_registers());
         // TODO(zentner): Check if nothing has changed at the start nodes, and return None.
         eval.total_db = Database::new();
         let mut to_invalidate = start.to_owned();

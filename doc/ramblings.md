@@ -151,3 +151,7 @@ a good idea, since the number of input facts is very small.
     output next_board(%1, %2, %3)
   }
 ```
+
+It actually works better with the arrows going the other way.
+
+

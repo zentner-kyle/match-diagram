@@ -9,7 +9,7 @@ use table;
 use table::Table;
 use value::Value;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Database {
     tables: HashMap<Predicate, Table>,
 }
@@ -57,6 +57,17 @@ impl Database {
             current_table: None,
             row: 0,
         }
+    }
+
+    pub fn contains(&self, fact: Fact) -> bool {
+        if let Some(table) = self.tables.get(&fact.predicate) {
+            for row in table.iter() {
+                if row == fact.values {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
 
@@ -130,6 +141,15 @@ impl<'a, 'b, 'c> Iterator for SimpleQueryIter<'a, 'b, 'c> {
         }
         return None;
     }
+}
+
+pub fn database_literal(data: Vec<(Predicate, Vec<Value>)>) -> Database {
+    let mut db = Database::new();
+    for &(predicate, ref values) in data.iter() {
+        let fact = Fact { predicate, values };
+        db.insert_fact(fact);
+    }
+    return db;
 }
 
 #[cfg(test)]
