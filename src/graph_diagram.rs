@@ -22,12 +22,27 @@ impl Edges {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct GraphNode {
+    node: Node,
+    out_edges: Edges,
+    in_edges: Edges,
+}
+
+impl GraphNode {
+    fn new(node: Node) -> Self {
+        GraphNode {
+            node,
+            out_edges: Edges::new(),
+            in_edges: Edges::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphDiagram {
     num_registers: usize,
     root: Vec<NodeIndex>,
-    graph: Vec<(Node, Edges)>,
-    match_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
-    refute_sources: HashMap<NodeIndex, Vec<NodeIndex>>,
+    graph: Vec<GraphNode>,
 }
 
 impl GraphDiagram {
@@ -36,8 +51,6 @@ impl GraphDiagram {
             num_registers,
             root: Vec::new(),
             graph: Vec::new(),
-            match_sources: HashMap::new(),
-            refute_sources: HashMap::new(),
         }
     }
 
@@ -45,53 +58,52 @@ impl GraphDiagram {
         Evaluation::run(self, input).total_db
     }
 
-    pub fn on_match(&self, node: NodeIndex) -> &Vec<NodeIndex> {
-        &self.graph[node.0].1.on_match
+    pub fn match_source_group(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        &self.graph[node.0].in_edges.on_match
     }
 
-    pub fn on_refute(&self, node: NodeIndex) -> &Vec<NodeIndex> {
-        &self.graph[node.0].1.on_refute
+    pub fn refute_source_group(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        &self.graph[node.0].in_edges.on_refute
     }
 
-    pub fn on_match_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
-        &mut self.graph[node.0].1.on_match
+    pub fn match_source_group_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        &mut self.graph[node.0].in_edges.on_match
     }
 
-    pub fn on_refute_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
-        &mut self.graph[node.0].1.on_refute
+    pub fn refute_source_group_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        &mut self.graph[node.0].in_edges.on_refute
+    }
+
+    pub fn match_target_group(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        &self.graph[node.0].out_edges.on_match
+    }
+
+    pub fn refute_target_group(&self, node: NodeIndex) -> &Vec<NodeIndex> {
+        &self.graph[node.0].out_edges.on_refute
+    }
+
+    pub fn match_target_group_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        &mut self.graph[node.0].out_edges.on_match
+    }
+
+    pub fn refute_target_group_mut(&mut self, node: NodeIndex) -> &mut Vec<NodeIndex> {
+        &mut self.graph[node.0].out_edges.on_refute
     }
 }
 
-fn insert_source(
-    sources: &mut HashMap<NodeIndex, Vec<NodeIndex>>,
-    src: NodeIndex,
-    target: NodeIndex,
-) {
-    match sources.entry(target) {
-        hash_map::Entry::Occupied(mut entry) => {
-            if !entry.get().contains(&src) {
-                entry.get_mut().push(src);
-            }
-        }
-        hash_map::Entry::Vacant(entry) => {
-            entry.insert(vec![src]);
-        }
-    }
-}
-
-fn remove_source(
-    sources: &mut HashMap<NodeIndex, Vec<NodeIndex>>,
-    src: NodeIndex,
-    target: NodeIndex,
-) {
-    let sources = sources
-        .get_mut(&target)
-        .expect("Should only be removing source which exists");
-    let index = sources
+fn remove_from_group(group: &mut Vec<NodeIndex>, node: NodeIndex) {
+    let position = group
         .iter()
-        .position(|&s| s == src)
-        .expect("src should be present in the sources of target");
-    sources.remove(index);
+        .position(|n| *n == node)
+        .expect("Should only remove a node if it is present in a group");
+    group.swap_remove(position);
+}
+
+fn insert_into_group(group: &mut Vec<NodeIndex>, node: NodeIndex) {
+    if group.iter().any(|n| *n == node) {
+        panic!("Should only insert a node if it is not present in a group");
+    }
+    group.push(node);
 }
 
 impl Diagram for GraphDiagram {
@@ -106,62 +118,62 @@ impl Diagram for GraphDiagram {
 
     fn insert_node(&mut self, node: Node) -> NodeIndex {
         let result = NodeIndex(self.len());
-        self.graph.push((node, Edges::new()));
+        self.graph.push(GraphNode::new(node));
         result
     }
 
     fn get_node(&self, index: NodeIndex) -> &Node {
-        &self.graph[index.0].0
+        &self.graph[index.0].node
     }
 
     fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node {
-        &mut self.graph[index.0].0
+        &mut self.graph[index.0].node
     }
 
     fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex) {
         if let Some(target) = self.get_on_match(src) {
-            remove_source(&mut self.match_sources, src, target);
+            remove_from_group(self.match_source_group_mut(target), src);
         }
         {
-            let edges = self.on_match_mut(src);
+            let edges = self.match_target_group_mut(src);
             edges.clear();
             edges.push(target);
         }
-        insert_source(&mut self.match_sources, src, target);
+        insert_into_group(self.match_source_group_mut(target), src);
     }
 
     fn set_on_refute(&mut self, src: NodeIndex, target: NodeIndex) {
         if let Some(target) = self.get_on_refute(src) {
-            remove_source(&mut self.refute_sources, src, target);
+            remove_from_group(self.refute_source_group_mut(target), src);
         }
         {
-            let edges = self.on_refute_mut(src);
+            let edges = self.refute_target_group_mut(src);
             edges.clear();
             edges.push(target);
         }
-        insert_source(&mut self.refute_sources, src, target);
+        insert_into_group(self.refute_source_group_mut(target), src);
     }
 
     fn clear_on_match(&mut self, src: NodeIndex) {
         if let Some(target) = self.get_on_match(src) {
-            remove_source(&mut self.match_sources, src, target);
+            remove_from_group(self.match_source_group_mut(target), src);
         }
-        self.on_match_mut(src).clear();
+        self.match_target_group_mut(src).clear();
     }
 
     fn clear_on_refute(&mut self, src: NodeIndex) {
         if let Some(target) = self.get_on_refute(src) {
-            remove_source(&mut self.refute_sources, src, target);
+            remove_from_group(self.refute_source_group_mut(target), src);
         }
-        self.on_refute_mut(src).clear();
+        self.refute_target_group_mut(src).clear();
     }
 
     fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex> {
-        self.on_match(src).get(0).cloned()
+        self.match_target_group(src).get(0).cloned()
     }
 
     fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
-        self.on_refute(src).get(0).cloned()
+        self.refute_target_group(src).get(0).cloned()
     }
 
     fn len(&self) -> usize {
@@ -169,11 +181,11 @@ impl Diagram for GraphDiagram {
     }
 
     fn get_match_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {
-        self.match_sources.get(&target).map(|v| &v[..])
+        Some(self.match_source_group(target).as_ref())
     }
 
     fn get_refute_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {
-        self.refute_sources.get(&target).map(|v| &v[..])
+        Some(self.refute_source_group(target).as_ref())
     }
 
     fn get_num_registers(&self) -> usize {
