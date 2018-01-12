@@ -17,7 +17,6 @@ mod mutate;
 mod mutation;
 mod node_index;
 mod parse;
-mod patch_diagram;
 mod predicate;
 mod registers;
 mod simple_query;

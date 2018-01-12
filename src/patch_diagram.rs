@@ -1,4 +1,4 @@
-use diagram::{Diagram, Node};
+use diagram::{Diagram, Node, MultiDiagram};
 use graph_diagram::GraphDiagram;
 use node_index::NodeIndex;
 use tiny_map;

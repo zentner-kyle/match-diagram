@@ -1,4 +1,4 @@
-use diagram::{Diagram, MatchTerm, MatchTermConstraint, Node, OutputTerm};
+use diagram::{Diagram, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
 use mutation::{Edge, Mutation, Term};
 use node_index::NodeIndex;
 use std::iter;

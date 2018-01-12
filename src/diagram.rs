@@ -58,7 +58,7 @@ pub enum Node {
 }
 
 pub trait MultiDiagram {
-    fn insert_node2(&mut self, node: Node) -> NodeIndex;
+    fn insert_node(&mut self, node: Node) -> NodeIndex;
 
     fn get_node(&self, index: NodeIndex) -> &Node;
 
@@ -72,19 +72,13 @@ pub trait MultiDiagram {
 
     fn remove_edge(&mut self, edge: Edge);
 
-    fn len2(&self) -> usize;
+    fn len(&self) -> usize;
 }
 
-pub trait Diagram {
+pub trait Diagram: MultiDiagram {
     fn get_root(&self) -> NodeIndex;
 
     fn set_root(&mut self, root: NodeIndex);
-
-    fn insert_node(&mut self, node: Node) -> NodeIndex;
-
-    fn get_node(&self, index: NodeIndex) -> &Node;
-
-    fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node;
 
     fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex);
 
@@ -97,8 +91,6 @@ pub trait Diagram {
     fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex>;
 
     fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex>;
-
-    fn len(&self) -> usize;
 
     fn get_match_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]>;
 

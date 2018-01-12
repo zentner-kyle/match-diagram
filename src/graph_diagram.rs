@@ -107,7 +107,7 @@ fn insert_into_group(group: &mut Vec<NodeIndex>, node: NodeIndex) {
 }
 
 impl MultiDiagram for GraphDiagram {
-    fn insert_node2(&mut self, node: Node) -> NodeIndex {
+    fn insert_node(&mut self, node: Node) -> NodeIndex {
         let result = NodeIndex(self.graph.len());
         self.graph.push(GraphNode::new(node));
         result
@@ -204,7 +204,7 @@ impl MultiDiagram for GraphDiagram {
         }
     }
 
-    fn len2(&self) -> usize {
+    fn len(&self) -> usize {
         self.graph.len()
     }
 }
@@ -217,20 +217,6 @@ impl Diagram for GraphDiagram {
     fn set_root(&mut self, root: NodeIndex) {
         self.roots.clear();
         self.roots.push(root);
-    }
-
-    fn insert_node(&mut self, node: Node) -> NodeIndex {
-        let result = NodeIndex(self.graph.len());
-        self.graph.push(GraphNode::new(node));
-        result
-    }
-
-    fn get_node(&self, index: NodeIndex) -> &Node {
-        &self.graph[index.0].node
-    }
-
-    fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node {
-        &mut self.graph[index.0].node
     }
 
     fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex) {
@@ -277,10 +263,6 @@ impl Diagram for GraphDiagram {
 
     fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
         self.refute_target_group(src).get(0).cloned()
-    }
-
-    fn len(&self) -> usize {
-        self.graph.len()
     }
 
     fn get_match_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {

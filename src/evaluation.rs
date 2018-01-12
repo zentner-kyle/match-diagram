@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::iter;
 
 use database::Database;
-use diagram::{Diagram, MatchTermConstraint, Node, OutputTerm};
+use diagram::{Diagram, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
 use fact::Fact;
 use node_index::NodeIndex;
 use registers::{RegisterFile, RegisterSet};

@@ -4,7 +4,7 @@ use std::cmp::{Ordering, PartialOrd};
 use std::iter;
 
 use database::Database;
-use diagram::{Diagram, Node, OutputTerm};
+use diagram::{Diagram, MultiDiagram, Node, OutputTerm};
 use evaluation::Evaluation;
 use gen_mutation::{GenMutation, UniformMutationContext};
 use graph_diagram::GraphDiagram;

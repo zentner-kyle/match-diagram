@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map;
 
-use diagram::{Diagram, Node};
+use diagram::{Diagram, MultiDiagram, Node};
 use node_index::NodeIndex;
 use predicate::Predicate;
 

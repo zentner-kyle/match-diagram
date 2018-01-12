@@ -3,7 +3,7 @@ use std::str::FromStr;
 use unicode_xid::UnicodeXID;
 
 use context::{Context, NodeInfo};
-use diagram::{Diagram, MatchTerm, MatchTermConstraint, Node, OutputTerm};
+use diagram::{Diagram, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
 use graph_diagram::GraphDiagram;
 use node_index::NodeIndex;
 use predicate::Predicate;
