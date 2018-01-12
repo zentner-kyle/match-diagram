@@ -4,6 +4,28 @@ use predicate::Predicate;
 use registers::RegisterSet;
 use value::Value;
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum EdgeGroup {
+    Roots,
+    MatchTargets(NodeIndex),
+    RefuteTargets(NodeIndex),
+    MatchSources(NodeIndex),
+    RefuteSources(NodeIndex),
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Edge {
+    Root(NodeIndex),
+    Match {
+        source: NodeIndex,
+        target: NodeIndex,
+    },
+    Refute {
+        source: NodeIndex,
+        target: NodeIndex,
+    },
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct MatchTerm {
     pub constraint: MatchTermConstraint,
@@ -33,6 +55,24 @@ pub enum Node {
         predicate: Predicate,
         terms: Vec<OutputTerm>,
     },
+}
+
+pub trait MultiDiagram {
+    fn insert_node2(&mut self, node: Node) -> NodeIndex;
+
+    fn get_node(&self, index: NodeIndex) -> &Node;
+
+    fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node;
+
+    fn get_group(&self, group: EdgeGroup) -> &[NodeIndex];
+
+    fn edge_exists(&self, edge: Edge) -> bool;
+
+    fn insert_edge(&mut self, edge: Edge);
+
+    fn remove_edge(&mut self, edge: Edge);
+
+    fn len2(&self) -> usize;
 }
 
 pub trait Diagram {

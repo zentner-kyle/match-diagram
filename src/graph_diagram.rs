@@ -1,7 +1,7 @@
 use std::collections::{hash_map, HashMap};
 
 use database::Database;
-use diagram::{Diagram, Node};
+use diagram::{Diagram, Edge, EdgeGroup, MultiDiagram, Node};
 use evaluation::Evaluation;
 use fixgraph::{EdgeIndex, FixGraph};
 use node_index::NodeIndex;
@@ -41,7 +41,7 @@ impl GraphNode {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GraphDiagram {
     num_registers: usize,
-    root: Vec<NodeIndex>,
+    roots: Vec<NodeIndex>,
     graph: Vec<GraphNode>,
 }
 
@@ -49,7 +49,7 @@ impl GraphDiagram {
     pub fn new(num_registers: usize) -> Self {
         GraphDiagram {
             num_registers,
-            root: Vec::new(),
+            roots: Vec::new(),
             graph: Vec::new(),
         }
     }
@@ -106,18 +106,121 @@ fn insert_into_group(group: &mut Vec<NodeIndex>, node: NodeIndex) {
     group.push(node);
 }
 
+impl MultiDiagram for GraphDiagram {
+    fn insert_node2(&mut self, node: Node) -> NodeIndex {
+        let result = NodeIndex(self.graph.len());
+        self.graph.push(GraphNode::new(node));
+        result
+    }
+
+    fn get_node(&self, index: NodeIndex) -> &Node {
+        &self.graph[index.0].node
+    }
+
+    fn get_node_mut(&mut self, index: NodeIndex) -> &mut Node {
+        &mut self.graph[index.0].node
+    }
+
+    fn get_group(&self, group: EdgeGroup) -> &[NodeIndex] {
+        match group {
+            EdgeGroup::Roots => self.roots.as_ref(),
+            EdgeGroup::MatchTargets(source) => self.match_target_group(source).as_ref(),
+            EdgeGroup::RefuteTargets(source) => self.refute_target_group(source).as_ref(),
+            EdgeGroup::MatchSources(target) => self.match_source_group(target).as_ref(),
+            EdgeGroup::RefuteSources(target) => self.refute_source_group(target).as_ref(),
+        }
+    }
+
+    fn edge_exists(&self, edge: Edge) -> bool {
+        match edge {
+            Edge::Root(node) => self.roots.iter().any(|n| *n == node),
+            Edge::Match { source, target } => {
+                let result = self.match_target_group(source).iter().any(|n| *n == target);
+                assert!(self.match_source_group(target).iter().any(|n| *n == source) == result);
+                result
+            }
+            Edge::Refute { source, target } => {
+                let result = self.refute_target_group(source)
+                    .iter()
+                    .any(|n| *n == target);
+                assert!(
+                    self.refute_source_group(target)
+                        .iter()
+                        .any(|n| *n == source) == result
+                );
+                result
+            }
+        }
+    }
+
+    fn insert_edge(&mut self, edge: Edge) {
+        assert!(!self.edge_exists(edge));
+        match edge {
+            Edge::Root(node) => {
+                self.roots.push(node);
+            }
+            Edge::Match { source, target } => {
+                self.match_target_group_mut(source).push(target);
+                self.match_source_group_mut(target).push(source);
+            }
+            Edge::Refute { source, target } => {
+                self.refute_target_group_mut(source).push(target);
+                self.refute_source_group_mut(target).push(source);
+            }
+        }
+    }
+
+    fn remove_edge(&mut self, edge: Edge) {
+        let msg = "Can only remove edges which exist";
+        match edge {
+            Edge::Root(node) => {
+                let index = self.roots.iter().position(|n| *n == node).expect(msg);
+                self.roots.swap_remove(index);
+            }
+            Edge::Match { source, target } => {
+                {
+                    let edges = self.match_target_group_mut(source);
+                    let index = edges.iter().position(|n| *n == target).expect(msg);
+                    edges.swap_remove(index);
+                }
+                {
+                    let edges = self.match_source_group_mut(target);
+                    let index = edges.iter().position(|n| *n == source).expect(msg);
+                    edges.swap_remove(index);
+                }
+            }
+            Edge::Refute { source, target } => {
+                {
+                    let edges = self.refute_target_group_mut(source);
+                    let index = edges.iter().position(|n| *n == target).expect(msg);
+                    edges.swap_remove(index);
+                }
+                {
+                    let edges = self.refute_source_group_mut(target);
+                    let index = edges.iter().position(|n| *n == source).expect(msg);
+                    edges.swap_remove(index);
+                }
+            }
+        }
+    }
+
+    fn len2(&self) -> usize {
+        self.graph.len()
+    }
+}
+
 impl Diagram for GraphDiagram {
     fn get_root(&self) -> NodeIndex {
-        self.root[0]
+        self.roots[0]
     }
 
     fn set_root(&mut self, root: NodeIndex) {
-        self.root.clear();
-        self.root.push(root);
+        self.roots.clear();
+        self.roots.push(root);
     }
 
     fn insert_node(&mut self, node: Node) -> NodeIndex {
-        let result = NodeIndex(self.len());
+        let result = NodeIndex(self.graph.len());
         self.graph.push(GraphNode::new(node));
         result
     }
