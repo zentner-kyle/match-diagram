@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map;
 
-use diagram::{Diagram, MultiDiagram, Node};
+use diagram::{MultiDiagram, Node};
 use node_index::NodeIndex;
 use predicate::Predicate;
 
@@ -44,7 +44,7 @@ impl Context {
         self.num_terms_for_predicate.get(&predicate).cloned()
     }
 
-    pub fn reserve_node_name(&mut self, name: &str, diagram: &mut Diagram) -> NodeInfo {
+    pub fn reserve_node_name(&mut self, name: &str, diagram: &mut MultiDiagram) -> NodeInfo {
         if self.node_name_to_info.contains_key(name) {
             self.node_name_to_info.get(name).unwrap().clone()
         } else {

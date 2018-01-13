@@ -3,8 +3,7 @@ use std::str::FromStr;
 use unicode_xid::UnicodeXID;
 
 use context::{Context, NodeInfo};
-use diagram::{Diagram, Edge, EdgeGroup, MatchTerm, MatchTermConstraint, MultiDiagram, Node,
-              OutputTerm};
+use diagram::{Edge, EdgeGroup, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
 use graph_diagram::GraphDiagram;
 use node_index::NodeIndex;
 use predicate::Predicate;
@@ -163,12 +162,12 @@ fn skip_whitespace(src: &str) -> &str {
     return rest;
 }
 
-struct ParseContext<'d, 'c, D: 'd + Diagram> {
+struct ParseContext<'d, 'c, D: 'd + MultiDiagram> {
     diagram: &'d mut D,
     context: &'c mut Context,
 }
 
-fn group_element<'a, 'b, D: Diagram>(
+fn group_element<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, NodeIndex> {
@@ -186,7 +185,7 @@ fn group_element<'a, 'b, D: Diagram>(
     ));
 }
 
-fn arm<'a, 'b, D: Diagram>(
+fn arm<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, Option<NodeIndex>> {
@@ -216,7 +215,7 @@ fn arm<'a, 'b, D: Diagram>(
     return Ok((Some(node_index), rest));
 }
 
-fn group<'a, 'b, D: Diagram>(
+fn group<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, Vec<NodeIndex>> {
@@ -244,7 +243,7 @@ fn group<'a, 'b, D: Diagram>(
     return Ok((items, rest));
 }
 
-fn reserve_predicate<'a, 'b, D: Diagram>(
+fn reserve_predicate<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
     parsed_predicate: ParsedPredicate<'a>,
@@ -272,7 +271,7 @@ enum ParsedPredicate<'a> {
     Number(u64),
 }
 
-fn parse_predicate<'a, 'b, D: Diagram>(
+fn parse_predicate<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     _context: &'b mut ParseContext<D>,
 ) -> Result<'a, ParsedPredicate<'a>> {
@@ -287,7 +286,7 @@ fn parse_predicate<'a, 'b, D: Diagram>(
     }
 }
 
-fn output_node<'a, 'b, D: Diagram>(
+fn output_node<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
     name: Option<&'a str>,
@@ -307,16 +306,13 @@ fn output_node<'a, 'b, D: Diagram>(
             return err_msg("Node with this name was already defined", src);
         }
         *context.diagram.get_node_mut(index) = node;
-        if name == "root" {
-            context.diagram.set_root(index);
-        }
     } else {
         node_index = context.diagram.insert_node(node);
     }
     Ok((node_index, rest))
 }
 
-fn match_node<'a, 'b, D: Diagram>(
+fn match_node<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
     name: Option<&'a str>,
@@ -359,7 +355,7 @@ fn match_node<'a, 'b, D: Diagram>(
     }
 }
 
-fn node_without_name<'a, 'b, D: Diagram>(
+fn node_without_name<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
     name: Option<&'a str>,
@@ -371,7 +367,7 @@ fn node_without_name<'a, 'b, D: Diagram>(
     return match_node(src, context, name);
 }
 
-fn root_statement<'a, 'b, D: Diagram>(
+fn root_statement<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> EmptyResult<'a> {
@@ -395,7 +391,7 @@ fn root_statement<'a, 'b, D: Diagram>(
         })
 }
 
-fn node<'a, 'b, D: Diagram>(
+fn node<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, NodeIndex> {
@@ -407,7 +403,7 @@ fn node<'a, 'b, D: Diagram>(
     }
 }
 
-fn node_name<'a, 'b, D: Diagram>(
+fn node_name<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     _context: &'b mut ParseContext<D>,
 ) -> Result<'a, &'a str> {
@@ -420,7 +416,7 @@ fn node_name<'a, 'b, D: Diagram>(
     Ok((name, rest))
 }
 
-fn named_node<'a, 'b, D: Diagram>(
+fn named_node<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, NodeIndex> {
@@ -429,7 +425,7 @@ fn named_node<'a, 'b, D: Diagram>(
     node_without_name(rest, context, Some(name))
 }
 
-fn toplevel_statement<'a, 'b, D: Diagram>(
+fn toplevel_statement<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> EmptyResult<'a> {
@@ -465,14 +461,14 @@ fn arg_list<'a, I, F: FnMut(&'a str) -> Result<'a, I>>(
     return Ok((items, rest));
 }
 
-fn match_terms<'a, 'b, D: Diagram>(
+fn match_terms<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, Vec<MatchTerm>> {
     arg_list(src, |s| match_term(s, context))
 }
 
-fn match_term<'a, 'b, D: Diagram>(
+fn match_term<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, MatchTerm> {
@@ -501,14 +497,14 @@ fn match_term<'a, 'b, D: Diagram>(
     Ok((MatchTerm { constraint, target }, rest))
 }
 
-fn output_terms<'a, 'b, D: Diagram>(
+fn output_terms<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, Vec<OutputTerm>> {
     arg_list(src, |s| output_term(s, context))
 }
 
-fn output_term<'a, 'b, D: Diagram>(
+fn output_term<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, OutputTerm> {
@@ -522,7 +518,7 @@ fn output_term<'a, 'b, D: Diagram>(
     }
 }
 
-fn register<'a, 'b, D: Diagram>(
+fn register<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     _context: &'b mut ParseContext<D>,
 ) -> Result<'a, usize> {
@@ -532,14 +528,17 @@ fn register<'a, 'b, D: Diagram>(
     Ok((reg as usize, rest))
 }
 
-fn value<'a, 'b, D: Diagram>(src: &'a str, _context: &'b mut ParseContext<D>) -> Result<'a, Value> {
+fn value<'a, 'b, D: MultiDiagram>(
+    src: &'a str,
+    _context: &'b mut ParseContext<D>,
+) -> Result<'a, Value> {
     let rest = skip_whitespace(src);
     let (_, rest) = character(rest, ':')?;
     let (symbol, rest) = unsigned_decimal_integer(rest)?;
     Ok((Value::Symbol(symbol), rest))
 }
 
-fn parse_diagram_inner<'a, 'b, D: Diagram>(
+fn parse_diagram_inner<'a, 'b, D: MultiDiagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
 ) -> Result<'a, ()> {
@@ -571,7 +570,7 @@ pub fn parse_diagram(
     }
 }
 
-pub fn update_diagram<'a, 'b, 'c, D: Diagram>(
+pub fn update_diagram<'a, 'b, 'c, D: MultiDiagram>(
     src: &'a str,
     diagram: &'b mut D,
     context: &'a mut Context,
@@ -599,7 +598,7 @@ pub fn node_literal(src: &str) -> Node {
         };
         toplevel_statement(&src, &mut context).expect("Could not parse node literal");
     }
-    d.get_node(d.get_root()).clone()
+    d.get_node(d.get_group(EdgeGroup::Roots)[0]).clone()
 }
 
 #[cfg(test)]
@@ -830,7 +829,7 @@ mod tests {
             ],
         };
         let root = expected_diagram.insert_node(output_node);
-        expected_diagram.set_root(root);
+        expected_diagram.insert_edge(Edge::Root(root));
         let mut d = GraphDiagram::new(0);
         let mut context = Context::new();
         let mut c = ParseContext {
@@ -880,9 +879,9 @@ mod tests {
         let output = expected_diagram.insert_node(output_node);
         let anything = expected_diagram.insert_node(match_anything_node);
         let root = expected_diagram.insert_node(match_ones_node);
-        expected_diagram.set_root(root);
-        expected_diagram.set_on_match(root, anything);
-        expected_diagram.set_on_match(anything, output);
+        expected_diagram.insert_edge(Edge::Root(root));
+        expected_diagram.insert_edge(Edge::Match { source: root, target: anything});
+        expected_diagram.insert_edge(Edge::Match { source: anything, target: output});
 
         let mut d = GraphDiagram::new(2);
         let mut context = Context::new();
@@ -925,7 +924,7 @@ mod tests {
             ],
         };
         let root = expected_diagram.insert_node(output_node);
-        expected_diagram.set_root(root);
+        expected_diagram.insert_edge(Edge::Root(root));
         let mut d = GraphDiagram::new(0);
         let mut context = Context::new();
         let mut c = ParseContext {
