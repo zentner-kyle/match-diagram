@@ -3,7 +3,8 @@ use std::str::FromStr;
 use unicode_xid::UnicodeXID;
 
 use context::{Context, NodeInfo};
-use diagram::{Diagram, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
+use diagram::{Diagram, Edge, EdgeGroup, MatchTerm, MatchTermConstraint, MultiDiagram, Node,
+              OutputTerm};
 use graph_diagram::GraphDiagram;
 use node_index::NodeIndex;
 use predicate::Predicate;
@@ -167,6 +168,24 @@ struct ParseContext<'d, 'c, D: 'd + Diagram> {
     context: &'c mut Context,
 }
 
+fn group_element<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> Result<'a, NodeIndex> {
+    let rest = skip_whitespace(src);
+    if let Ok((node_index, rest)) = node(rest, context) {
+        return Ok((node_index, rest));
+    }
+    let (name, rest) = lowercase_identifier(rest)?;
+    return Ok((
+        context
+            .context
+            .reserve_node_name(name, context.diagram)
+            .index,
+        rest,
+    ));
+}
+
 fn arm<'a, 'b, D: Diagram>(
     src: &'a str,
     context: &'b mut ParseContext<D>,
@@ -195,6 +214,34 @@ fn arm<'a, 'b, D: Diagram>(
     let rest = skip_whitespace(rest);
     let (_, rest) = character(rest, '}')?;
     return Ok((Some(node_index), rest));
+}
+
+fn group<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> Result<'a, Vec<NodeIndex>> {
+    let rest = skip_whitespace(src);
+    let (_, rest) = character(rest, '{')?;
+    let mut rest = skip_whitespace(rest);
+    let mut items = Vec::new();
+    loop {
+        rest = skip_whitespace(rest);
+        if let Ok((item, r)) = group_element(rest, context) {
+            items.push(item);
+            rest = r;
+        } else {
+            break;
+        }
+        rest = skip_whitespace(rest);
+        if let Ok((_, r)) = character(rest, ';') {
+            rest = r;
+        } else {
+            break;
+        }
+    }
+    let rest = skip_whitespace(rest);
+    let (_, rest) = character(rest, '}')?;
+    return Ok((items, rest));
 }
 
 fn reserve_predicate<'a, 'b, D: Diagram>(
@@ -276,39 +323,39 @@ fn match_node<'a, 'b, D: Diagram>(
 ) -> Result<'a, NodeIndex> {
     let (predicate, rest) = parse_predicate(src, context)?;
     let (terms, rest) = match_terms(rest, context)?;
-    let (match_target, rest) = arm(rest, context)?;
-    let (refute_target, rest) = if let Ok((t, r)) = arm(rest, context) {
+    let (match_targets, rest) = group(rest, context)?;
+    let (refute_targets, rest) = if let Ok((t, r)) = group(rest, context) {
         (t, r)
     } else {
-        (None, rest)
+        (vec![], rest)
     };
     let predicate = reserve_predicate(src, context, predicate, terms.len())?.0;
     let node = Node::Match { predicate, terms };
     if let Some(name) = name {
-        let NodeInfo { defined, index } = context.context.reserve_node_name(name, context.diagram);
+        let NodeInfo {
+            defined,
+            index: source,
+        } = context.context.reserve_node_name(name, context.diagram);
         if defined {
             return err_msg("Node with this name was already defined", src);
         }
-        *context.diagram.get_node_mut(index) = node;
-        if let Some(on_match) = match_target {
-            context.diagram.set_on_match(index, on_match);
+        *context.diagram.get_node_mut(source) = node;
+        for target in match_targets {
+            context.diagram.insert_edge(Edge::Match { source, target });
         }
-        if let Some(on_refute) = refute_target {
-            context.diagram.set_on_refute(index, on_refute);
+        for target in refute_targets {
+            context.diagram.insert_edge(Edge::Refute { source, target });
         }
-        if name == "root" {
-            context.diagram.set_root(index);
-        }
-        Ok((index, rest))
+        Ok((source, rest))
     } else {
-        let index = context.diagram.insert_node(node);
-        if let Some(on_match) = match_target {
-            context.diagram.set_on_match(index, on_match);
+        let source = context.diagram.insert_node(node);
+        for target in match_targets {
+            context.diagram.insert_edge(Edge::Match { source, target });
         }
-        if let Some(on_refute) = refute_target {
-            context.diagram.set_on_refute(index, on_refute);
+        for target in refute_targets {
+            context.diagram.insert_edge(Edge::Refute { source, target });
         }
-        Ok((index, rest))
+        Ok((source, rest))
     }
 }
 
@@ -322,6 +369,30 @@ fn node_without_name<'a, 'b, D: Diagram>(
         return Ok((node, rest));
     };
     return match_node(src, context, name);
+}
+
+fn root_statement<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> EmptyResult<'a> {
+    let rest = prefix(src, "root")?;
+    let rest = skip_whitespace(rest);
+    println!("rest376 = {:?}", rest);
+    let rest = character(rest, ':')?.1;
+    println!("rest378 = {:?}", rest);
+    group(rest, context)
+        .map(|(roots, rest)| {
+            for root in roots {
+                context.diagram.insert_edge(Edge::Root(root));
+            }
+            rest
+        })
+        .or_else(|_| {
+            node(rest, context).map(|(root, rest)| {
+                context.diagram.insert_edge(Edge::Root(root));
+                rest
+            })
+        })
 }
 
 fn node<'a, 'b, D: Diagram>(
@@ -341,9 +412,30 @@ fn node_name<'a, 'b, D: Diagram>(
     _context: &'b mut ParseContext<D>,
 ) -> Result<'a, &'a str> {
     let (name, rest) = lowercase_identifier(src)?;
+    if name == "root" {
+        return err_msg("root is not allowed as a node name", src);
+    }
     let rest = skip_whitespace(rest);
     let rest = character(rest, ':')?.1;
     Ok((name, rest))
+}
+
+fn named_node<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> Result<'a, NodeIndex> {
+    let rest = skip_whitespace(src);
+    let (name, rest) = node_name(rest, context)?;
+    node_without_name(rest, context, Some(name))
+}
+
+fn toplevel_statement<'a, 'b, D: Diagram>(
+    src: &'a str,
+    context: &'b mut ParseContext<D>,
+) -> EmptyResult<'a> {
+    let rest = skip_whitespace(src);
+    return root_statement(rest, context)
+        .or_else(|_| named_node(rest, context).map(|(_, rest)| rest));
 }
 
 fn arg_list<'a, I, F: FnMut(&'a str) -> Result<'a, I>>(
@@ -453,7 +545,7 @@ fn parse_diagram_inner<'a, 'b, D: Diagram>(
 ) -> Result<'a, ()> {
     let mut rest = src;
     while rest != "" {
-        let (_, r) = node(rest, context)?;
+        let r = toplevel_statement(rest, context)?;
         rest = skip_whitespace(r);
     }
     Ok(((), rest))
@@ -499,13 +591,13 @@ pub fn update_diagram<'a, 'b, 'c, D: Diagram>(
 pub fn node_literal(src: &str) -> Node {
     let mut d = GraphDiagram::new(100);
     let mut c = Context::new();
-    let src = format!("{} {{ }}", src);
+    let src = format!("root: {} {{ }}", src);
     {
         let mut context = ParseContext {
             diagram: &mut d,
             context: &mut c,
         };
-        node_without_name(&src, &mut context, Some("root")).expect("Could not parse node literal");
+        toplevel_statement(&src, &mut context).expect("Could not parse node literal");
     }
     d.get_node(d.get_root()).clone()
 }
