@@ -8,6 +8,7 @@ use simple_query::{SimpleQuery, SimpleQueryTerm};
 use table;
 use table::Table;
 use value::Value;
+use weight::Weight;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Database {
@@ -22,13 +23,17 @@ impl Database {
     }
 
     pub fn insert_fact<'a, 'b>(&'a mut self, fact: Fact<'b>) {
+        self.insert_fact_with_weight(fact, Weight(1));
+    }
+
+    pub fn insert_fact_with_weight<'a, 'b>(&'a mut self, fact: Fact<'b>, weight: Weight) {
         match self.tables.entry(fact.predicate) {
             hash_map::Entry::Occupied(mut entry) => {
-                entry.get_mut().push(fact.values);
+                entry.get_mut().push(fact.values, weight);
             }
             hash_map::Entry::Vacant(entry) => {
                 let mut table = Table::new(fact.values.len());
-                table.push(fact.values);
+                table.push(fact.values, weight);
                 entry.insert(table);
             }
         };
@@ -53,6 +58,12 @@ impl Database {
 
     pub fn all_facts(&self) -> AllFactIter {
         AllFactIter {
+            inner: self.weighted_facts(),
+        }
+    }
+
+    pub fn weighted_facts(&self) -> WeightedFacts {
+        WeightedFacts {
             tables_iter: self.tables.iter(),
             current_table: None,
             row: 0,
@@ -68,6 +79,18 @@ impl Database {
             }
         }
         return false;
+    }
+
+    pub fn weight(&self, fact: Fact) -> Weight {
+        let mut total = 0;
+        if let Some(table) = self.tables.get(&fact.predicate) {
+            for (row, weight) in table.weighted_rows() {
+                if row == fact.values {
+                    total += weight.0;
+                }
+            }
+        }
+        return Weight(total);
     }
 }
 
@@ -95,23 +118,40 @@ impl<'a> Iterator for PredicateIter<'a> {
 
 #[derive(Clone, Debug)]
 pub struct AllFactIter<'a> {
-    tables_iter: hash_map::Iter<'a, Predicate, Table>,
-    current_table: Option<(Predicate, &'a Table)>,
-    row: usize,
+    inner: WeightedFacts<'a>,
 }
 
 impl<'a> Iterator for AllFactIter<'a> {
     type Item = Fact<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(f, _)| f)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WeightedFacts<'a> {
+    tables_iter: hash_map::Iter<'a, Predicate, Table>,
+    current_table: Option<(Predicate, &'a Table)>,
+    row: usize,
+}
+
+impl<'a> Iterator for WeightedFacts<'a> {
+    type Item = (Fact<'a>, Weight);
+
+    fn next(&mut self) -> Option<Self::Item> {
         if let Some((predicate, table)) = self.current_table {
             if self.row < table.num_rows() {
                 let row = table.row(self.row);
+                let weight = table.weight(self.row);
                 self.row += 1;
-                return Some(Fact {
-                    predicate,
-                    values: row,
-                });
+                return Some((
+                    Fact {
+                        predicate,
+                        values: row,
+                    },
+                    weight,
+                ));
             }
         };
         if let Some((&predicate, table)) = self.tables_iter.next() {

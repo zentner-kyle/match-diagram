@@ -55,7 +55,7 @@ impl GraphDiagram {
     }
 
     pub fn evaluate(&self, input: &Database) -> Database {
-        Evaluation::run(self, input).total_db
+        Evaluation::run_multi(self, input, self.num_registers).total_db
     }
 
     pub fn match_source_group(&self, node: NodeIndex) -> &Vec<NodeIndex> {
@@ -133,13 +133,20 @@ impl MultiDiagram for GraphDiagram {
 
     fn edge_exists(&self, edge: Edge) -> bool {
         match edge {
-            Edge::Root(node) => self.roots.iter().any(|n| *n == node),
+            Edge::Root(node) => {
+                assert!(node.0 < self.len());
+                self.roots.iter().any(|n| *n == node)
+            }
             Edge::Match { source, target } => {
+                assert!(source.0 < self.len());
+                assert!(target.0 < self.len());
                 let result = self.match_target_group(source).iter().any(|n| *n == target);
                 assert!(self.match_source_group(target).iter().any(|n| *n == source) == result);
                 result
             }
             Edge::Refute { source, target } => {
+                assert!(source.0 < self.len());
+                assert!(target.0 < self.len());
                 let result = self.refute_target_group(source)
                     .iter()
                     .any(|n| *n == target);
@@ -157,13 +164,18 @@ impl MultiDiagram for GraphDiagram {
         assert!(!self.edge_exists(edge));
         match edge {
             Edge::Root(node) => {
+                assert!(node.0 < self.len());
                 self.roots.push(node);
             }
             Edge::Match { source, target } => {
+                assert!(source.0 < self.len());
+                assert!(target.0 < self.len());
                 self.match_target_group_mut(source).push(target);
                 self.match_source_group_mut(target).push(source);
             }
             Edge::Refute { source, target } => {
+                assert!(source.0 < self.len());
+                assert!(target.0 < self.len());
                 self.refute_target_group_mut(source).push(target);
                 self.refute_source_group_mut(target).push(source);
             }
@@ -220,6 +232,8 @@ impl Diagram for GraphDiagram {
     }
 
     fn set_on_match(&mut self, src: NodeIndex, target: NodeIndex) {
+        assert!(src.0 < self.len());
+        assert!(target.0 < self.len());
         if let Some(target) = self.get_on_match(src) {
             remove_from_group(self.match_source_group_mut(target), src);
         }
@@ -232,6 +246,8 @@ impl Diagram for GraphDiagram {
     }
 
     fn set_on_refute(&mut self, src: NodeIndex, target: NodeIndex) {
+        assert!(src.0 < self.len());
+        assert!(target.0 < self.len());
         if let Some(target) = self.get_on_refute(src) {
             remove_from_group(self.refute_source_group_mut(target), src);
         }
@@ -244,6 +260,7 @@ impl Diagram for GraphDiagram {
     }
 
     fn clear_on_match(&mut self, src: NodeIndex) {
+        assert!(src.0 < self.len());
         if let Some(target) = self.get_on_match(src) {
             remove_from_group(self.match_source_group_mut(target), src);
         }
@@ -251,6 +268,7 @@ impl Diagram for GraphDiagram {
     }
 
     fn clear_on_refute(&mut self, src: NodeIndex) {
+        assert!(src.0 < self.len());
         if let Some(target) = self.get_on_refute(src) {
             remove_from_group(self.refute_source_group_mut(target), src);
         }
@@ -258,18 +276,22 @@ impl Diagram for GraphDiagram {
     }
 
     fn get_on_match(&self, src: NodeIndex) -> Option<NodeIndex> {
+        assert!(src.0 < self.len());
         self.match_target_group(src).get(0).cloned()
     }
 
     fn get_on_refute(&self, src: NodeIndex) -> Option<NodeIndex> {
+        assert!(src.0 < self.len());
         self.refute_target_group(src).get(0).cloned()
     }
 
     fn get_match_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {
+        assert!(target.0 < self.len());
         Some(self.match_source_group(target).as_ref())
     }
 
     fn get_refute_sources(&self, target: NodeIndex) -> Option<&[NodeIndex]> {
+        assert!(target.0 < self.len());
         Some(self.refute_source_group(target).as_ref())
     }
 

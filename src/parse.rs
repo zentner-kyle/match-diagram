@@ -373,9 +373,7 @@ fn root_statement<'a, 'b, D: MultiDiagram>(
 ) -> EmptyResult<'a> {
     let rest = prefix(src, "root")?;
     let rest = skip_whitespace(rest);
-    println!("rest376 = {:?}", rest);
     let rest = character(rest, ':')?.1;
-    println!("rest378 = {:?}", rest);
     group(rest, context)
         .map(|(roots, rest)| {
             for root in roots {
@@ -880,8 +878,14 @@ mod tests {
         let anything = expected_diagram.insert_node(match_anything_node);
         let root = expected_diagram.insert_node(match_ones_node);
         expected_diagram.insert_edge(Edge::Root(root));
-        expected_diagram.insert_edge(Edge::Match { source: root, target: anything});
-        expected_diagram.insert_edge(Edge::Match { source: anything, target: output});
+        expected_diagram.insert_edge(Edge::Match {
+            source: root,
+            target: anything,
+        });
+        expected_diagram.insert_edge(Edge::Match {
+            source: anything,
+            target: output,
+        });
 
         let mut d = GraphDiagram::new(2);
         let mut context = Context::new();

@@ -24,3 +24,4 @@ mod step_problem;
 mod table;
 mod tiny_map;
 mod value;
+mod weight;

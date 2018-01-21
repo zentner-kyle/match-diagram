@@ -1,3 +1,5 @@
+use std::fmt;
+
 use database::Database;
 use node_index::NodeIndex;
 use predicate::Predicate;
@@ -57,7 +59,7 @@ pub enum Node {
     },
 }
 
-pub trait MultiDiagram {
+pub trait MultiDiagram: fmt::Debug {
     fn insert_node(&mut self, node: Node) -> NodeIndex;
 
     fn get_node(&self, index: NodeIndex) -> &Node;

@@ -38,7 +38,7 @@ impl DiagramIndividual {
             });
         }
         diagram.set_root(NodeIndex(0));
-        let evaluations = iter::repeat(Evaluation::new(&diagram, num_registers))
+        let evaluations = iter::repeat(Evaluation::new())
             .take(num_evaluations)
             .collect();
         DiagramIndividual {
@@ -82,9 +82,9 @@ impl StepProblem {
             .zip(individual.evaluations.iter_mut())
         {
             if let Some(result) = if let Some(start) = start {
-                eval.rerun_from(&individual.diagram, input, &[start])
+                eval.rerun_from(&individual.diagram, input, &[start], self.num_registers)
             } else {
-                eval.rerun_from(&individual.diagram, input, &[])
+                eval.rerun_from(&individual.diagram, input, &[], self.num_registers)
             } {
                 *eval = result;
             }
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn evolve_simple_copy() {
-        let rng = XorShiftRng::from_seed([0xde, 0xad, 0xbe, 0xef]);
+        let rng = XorShiftRng::from_seed([0xba, 0xeb, 0xae, 0xee]);
         let problem = StepProblem {
             samples: vec![
                 (
@@ -200,7 +200,15 @@ mod tests {
         for i in 0..50 {
             if i % 10 == 0 {
                 let fitest = engine.fitest();
-                println!("fitest = {:#?}", fitest);
+                println!("fitest = {:#?}", fitest.diagram);
+                println!(
+                    "fitest total_dbs = {:#?}",
+                    fitest
+                        .evaluations
+                        .iter()
+                        .map(|e| &e.total_db)
+                        .collect::<Vec<_>>()
+                );
                 println!("fitness of fitest = {}", fitest.fitness);
                 println!("generation = {}", i);
             }
