@@ -6,7 +6,7 @@ use std::iter;
 use database::Database;
 use diagram::{Diagram, MultiDiagram, Node, OutputTerm};
 use evaluation::Evaluation;
-use gen_mutation::{GenMutation, UniformMutationContext};
+use gen_mutation::{GenMutation, IndividualMutationState, UniformMutationContext};
 use graph_diagram::GraphDiagram;
 use mutate::{apply_mutation, MutationResult};
 use node_index::NodeIndex;
@@ -18,6 +18,7 @@ pub struct DiagramIndividual {
     pub diagram: GraphDiagram,
     pub evaluations: Vec<Evaluation>,
     pub fitness: i64,
+    pub mutation_state: IndividualMutationState,
 }
 
 impl DiagramIndividual {
@@ -45,6 +46,7 @@ impl DiagramIndividual {
             diagram,
             evaluations,
             fitness: i64::min_value(),
+            mutation_state: IndividualMutationState::new(),
         }
     }
 }
@@ -94,7 +96,11 @@ impl StepProblem {
     }
 
     fn mutate_and_rescore<R: Rng>(&self, individual: &mut DiagramIndividual, rng: &mut R) -> bool {
-        let mutation = self.mutation_context.gen_mutation(rng);
+        let mutation = self.mutation_context.gen_mutation(
+            &individual.diagram,
+            &mut individual.mutation_state,
+            rng,
+        );
         if let Some(MutationResult {
             phenotype_could_have_changed,
             node_to_restart,
@@ -159,7 +165,6 @@ mod tests {
     use rand::XorShiftRng;
     use value::Value;
 
-    #[test]
     fn evolve_simple_copy() {
         let rng = XorShiftRng::from_seed([0xba, 0xeb, 0xae, 0xee]);
         let problem = StepProblem {

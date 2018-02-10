@@ -1,10 +1,20 @@
 use rand::Rng;
 
-use mutation::{Edge, Mutation, Term};
+use diagram::{Edge, EdgeGroup, MultiDiagram};
+use mutation::{Mutation, Term};
 use node_index::NodeIndex;
 use predicate::Predicate;
 use std::collections::HashMap;
 use value::Value;
+
+#[derive(Debug, Clone)]
+pub struct IndividualMutationState {}
+
+impl IndividualMutationState {
+    pub fn new() -> Self {
+        IndividualMutationState {}
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct UniformMutationContext {
@@ -17,7 +27,12 @@ pub struct UniformMutationContext {
 }
 
 pub trait GenMutation {
-    fn gen_mutation<R: Rng>(&self, rng: &mut R) -> Mutation;
+    fn gen_mutation<D: MultiDiagram, R: Rng>(
+        &self,
+        diagram: &D,
+        state: &mut IndividualMutationState,
+        rng: &mut R,
+    ) -> Mutation;
 }
 
 fn nonzero(value: usize) -> usize {
@@ -74,9 +89,24 @@ impl UniformMutationContext {
 
     fn gen_edge<R: Rng>(&self, rng: &mut R) -> Edge {
         match rng.gen_range(0, 3) {
-            0 => Edge::Root,
-            1 => Edge::Match(self.gen_node(rng)),
-            2 => Edge::Refute(self.gen_node(rng)),
+            0 => Edge::Root(self.gen_node(rng)),
+            1 => Edge::Match {
+                source: self.gen_node(rng),
+                target: self.gen_node(rng),
+            },
+            2 => Edge::Refute {
+                source: self.gen_node(rng),
+                target: self.gen_node(rng),
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    fn gen_group<R: Rng>(&self, rng: &mut R) -> EdgeGroup {
+        match rng.gen_range(0, 3) {
+            0 => EdgeGroup::Roots,
+            1 => EdgeGroup::MatchTargets(self.gen_node(rng)),
+            2 => EdgeGroup::RefuteTargets(self.gen_node(rng)),
             _ => unreachable!(),
         }
     }
@@ -87,7 +117,12 @@ impl UniformMutationContext {
 }
 
 impl GenMutation for UniformMutationContext {
-    fn gen_mutation<R: Rng>(&self, rng: &mut R) -> Mutation {
+    fn gen_mutation<D: MultiDiagram, R: Rng>(
+        &self,
+        diagram: &D,
+        state: &mut IndividualMutationState,
+        rng: &mut R,
+    ) -> Mutation {
         match rng.gen_range(0, 10) {
             0 => Mutation::SetConstraintRegister {
                 term: self.gen_term(rng),
@@ -108,9 +143,8 @@ impl GenMutation for UniformMutationContext {
                     None
                 },
             },
-            4 => Mutation::SetEdge {
+            4 => Mutation::InsertEdge {
                 edge: self.gen_edge(rng),
-                target: self.gen_node(rng),
             },
             5 => Mutation::SetOutputRegister {
                 term: self.gen_term(rng),
@@ -124,16 +158,7 @@ impl GenMutation for UniformMutationContext {
                 node: self.gen_node(rng),
                 predicate: self.gen_predicate(rng),
             },
-            8 => {
-                let predicate = self.gen_predicate(rng);
-                let num_terms = *self.num_terms_for_predicate.get(&predicate).unwrap();
-                Mutation::InsertPassthrough {
-                    predicate,
-                    num_terms,
-                    edge: self.gen_edge(rng),
-                }
-            }
-            9 => Mutation::RemoveNode {
+            8 => Mutation::RemoveNode {
                 node: self.gen_node(rng),
             },
             _ => unreachable!(),

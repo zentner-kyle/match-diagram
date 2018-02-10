@@ -15,6 +15,17 @@ pub enum EdgeGroup {
     RefuteSources(NodeIndex),
 }
 
+impl EdgeGroup {
+    pub fn edge_to(self, target: NodeIndex) -> Edge {
+        match self {
+            EdgeGroup::Roots => Edge::Root(target),
+            EdgeGroup::MatchTargets(source) => Edge::Match { source, target },
+            EdgeGroup::RefuteTargets(source) => Edge::Match { source, target },
+            _ => panic!("can only make an edge to target given a source group"),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Edge {
     Root(NodeIndex),
@@ -26,6 +37,15 @@ pub enum Edge {
         source: NodeIndex,
         target: NodeIndex,
     },
+}
+
+impl Edge {
+    pub fn source(self) -> Option<NodeIndex> {
+        match self {
+            Edge::Root(_) => None,
+            Edge::Match { source, .. } | Edge::Refute { source, .. } => Some(source),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

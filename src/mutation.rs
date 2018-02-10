@@ -1,3 +1,4 @@
+use diagram::{Edge, EdgeGroup};
 use node_index::NodeIndex;
 use predicate::Predicate;
 use value::Value;
@@ -29,13 +30,6 @@ Behavior changing mutations:
  */
 
 #[derive(Clone, Copy, Debug)]
-pub enum Edge {
-    Root,
-    Match(NodeIndex),
-    Refute(NodeIndex),
-}
-
-#[derive(Clone, Copy, Debug)]
 pub struct Term(pub NodeIndex, pub usize);
 
 #[derive(Clone, Debug)]
@@ -55,17 +49,11 @@ pub enum Mutation {
         term: Term,
         register: Option<usize>,
     },
-    InsertPassthrough {
-        predicate: Predicate,
-        num_terms: usize,
-        edge: Edge,
-    },
     RemoveNode {
         node: NodeIndex,
     },
-    SetEdge {
+    InsertEdge {
         edge: Edge,
-        target: NodeIndex,
     },
     SetOutputRegister {
         term: Term,

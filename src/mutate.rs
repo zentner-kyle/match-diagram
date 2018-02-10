@@ -1,5 +1,5 @@
-use diagram::{Diagram, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
-use mutation::{Edge, Mutation, Term};
+use diagram::{Diagram, Edge, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
+use mutation::{Mutation, Term};
 use node_index::NodeIndex;
 use std::iter;
 
@@ -77,50 +77,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             };
             return None;
         }
-        Mutation::InsertPassthrough {
-            predicate,
-            num_terms,
-            edge,
-        } => {
-            if diagram.len() > 2 {
-                return None;
-            }
-            let node = Node::Match {
-                predicate,
-                terms: iter::repeat(MatchTerm {
-                    constraint: MatchTermConstraint::Free,
-                    target: None,
-                }).take(num_terms)
-                    .collect(),
-            };
-            let node_index = diagram.insert_node(node);
-            match edge {
-                Edge::Root => {
-                    let target = diagram.get_root();
-                    diagram.set_on_match(node_index, target);
-                    diagram.set_on_refute(node_index, target);
-                    diagram.set_root(node_index);
-                }
-                Edge::Match(src) => {
-                    if let Some(target) = diagram.get_on_match(src) {
-                        diagram.set_on_match(node_index, target);
-                        diagram.set_on_refute(node_index, target);
-                    }
-                    diagram.set_on_match(src, node_index);
-                }
-                Edge::Refute(src) => {
-                    if let Some(target) = diagram.get_on_refute(src) {
-                        diagram.set_on_match(node_index, target);
-                        diagram.set_on_refute(node_index, target);
-                    }
-                    diagram.set_on_refute(src, node_index);
-                }
-            }
-            return Some(MutationResult {
-                phenotype_could_have_changed: false,
-                node_to_restart: None,
-            });
-        }
         Mutation::RemoveNode { node } => {
             if node.0 >= diagram.len() {
                 return None;
@@ -188,35 +144,13 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
                 });
             }
         }
-        Mutation::SetEdge { edge, target } => match edge {
-            Edge::Root => {
-                diagram.set_root(target);
-                return Some(MutationResult {
-                    phenotype_could_have_changed: true,
-                    node_to_restart: None,
-                });
-            }
-            Edge::Match(src) => {
-                if src.0 >= diagram.len() || target.0 >= diagram.len() {
-                    return None;
-                }
-                diagram.set_on_match(src, target);
-                return Some(MutationResult {
-                    phenotype_could_have_changed: true,
-                    node_to_restart: Some(src),
-                });
-            }
-            Edge::Refute(src) => {
-                if src.0 >= diagram.len() || target.0 >= diagram.len() {
-                    return None;
-                }
-                diagram.set_on_refute(src, target);
-                return Some(MutationResult {
-                    phenotype_could_have_changed: true,
-                    node_to_restart: Some(src),
-                });
-            }
-        },
+        Mutation::InsertEdge { edge } => {
+            diagram.insert_edge(edge);
+            return Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: edge.source(),
+            });
+        }
         Mutation::SetOutputRegister {
             term: Term(node, term),
             register,
@@ -278,7 +212,7 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diagram::{MatchTerm, MatchTermConstraint, OutputTerm};
+    use diagram::{EdgeGroup, MatchTerm, MatchTermConstraint, OutputTerm};
     use graph_diagram::GraphDiagram;
     use parse::{node_literal, parse_diagram};
     use predicate::Predicate;
@@ -381,65 +315,6 @@ mod tests {
     }
 
     #[test]
-    fn insert_passthrough() {
-        let (mut diagram, context) = parse_diagram(
-            r#"
-        root: @0(_ -> %0, _ -> %1) {
-          a: output @1(%0, %1)
-        }
-        "#,
-            2,
-        ).unwrap();
-        let root = diagram.get_root();
-        apply_mutation(
-            &mut diagram,
-            Mutation::InsertPassthrough {
-                predicate: Predicate(1),
-                num_terms: 2,
-                edge: Edge::Match(root),
-            },
-        );
-        assert_eq!(
-            *diagram.get_node(diagram.get_on_match(root).unwrap()),
-            node_literal("@1(_, _)")
-        );
-        let a = context.node_name_to_info.get("a").unwrap().index;
-        assert_eq!(
-            diagram.get_on_match(diagram.get_on_match(root).unwrap()),
-            Some(a)
-        );
-        assert_eq!(
-            diagram.get_on_refute(diagram.get_on_match(root).unwrap()),
-            Some(a)
-        );
-    }
-
-    #[test]
-    fn insert_passthrough_at_root() {
-        let mut diagram = diagram_literal(
-            r#"
-        root: @0(_ -> %0, _ -> %1) {
-          a: output @1(%0, %1)
-        }
-        "#,
-            2,
-        );
-        let root = diagram.get_root();
-        apply_mutation(
-            &mut diagram,
-            Mutation::InsertPassthrough {
-                predicate: Predicate(1),
-                num_terms: 2,
-                edge: Edge::Root,
-            },
-        );
-        let new_root = diagram.get_root();
-        assert_eq!(*diagram.get_node(new_root), node_literal("@1(_, _)"));
-        assert_eq!(diagram.get_on_match(new_root), Some(root));
-        assert_eq!(diagram.get_on_refute(new_root), Some(root));
-    }
-
-    #[test]
     fn remove_node_not_passthrough() {
         let (mut diagram, context) = parse_diagram(
             r#"
@@ -530,9 +405,8 @@ mod tests {
         assert_eq!(
             apply_mutation(
                 &mut diagram,
-                Mutation::SetEdge {
-                    edge: Edge::Root,
-                    target: a,
+                Mutation::InsertEdge {
+                    edge: Edge::Root(a),
                 }
             ),
             Some(MutationResult {
@@ -540,7 +414,13 @@ mod tests {
                 node_to_restart: None,
             })
         );
-        assert_eq!(diagram.get_root(), a);
+        assert!(
+            diagram
+                .get_group(EdgeGroup::Roots)
+                .iter()
+                .position(|n| *n == a)
+                .is_some()
+        );
     }
 
     #[test]
@@ -560,9 +440,11 @@ mod tests {
         assert_eq!(
             apply_mutation(
                 &mut diagram,
-                Mutation::SetEdge {
-                    edge: Edge::Match(a),
-                    target: a,
+                Mutation::InsertEdge {
+                    edge: Edge::Match {
+                        source: a,
+                        target: a,
+                    },
                 }
             ),
             Some(MutationResult {
@@ -570,8 +452,20 @@ mod tests {
                 node_to_restart: Some(a),
             })
         );
-        assert_eq!(diagram.get_on_match(a), Some(a));
-        assert_eq!(diagram.get_on_refute(a), Some(b));
+        assert!(
+            diagram
+                .get_group(EdgeGroup::MatchTargets(a))
+                .iter()
+                .position(|n| *n == a)
+                .is_some()
+        );
+        assert!(
+            diagram
+                .get_group(EdgeGroup::RefuteTargets(a))
+                .iter()
+                .position(|n| *n == b)
+                .is_some()
+        );
     }
 
     #[test]
@@ -591,9 +485,11 @@ mod tests {
         assert_eq!(
             apply_mutation(
                 &mut diagram,
-                Mutation::SetEdge {
-                    edge: Edge::Refute(a),
-                    target: a,
+                Mutation::InsertEdge {
+                    edge: Edge::Refute {
+                        source: a,
+                        target: a,
+                    },
                 }
             ),
             Some(MutationResult {
@@ -601,8 +497,20 @@ mod tests {
                 node_to_restart: Some(a),
             })
         );
-        assert_eq!(diagram.get_on_refute(a), Some(a));
-        assert_eq!(diagram.get_on_match(a), Some(b));
+        assert!(
+            diagram
+                .get_group(EdgeGroup::RefuteTargets(a))
+                .iter()
+                .position(|n| *n == a)
+                .is_some()
+        );
+        assert!(
+            diagram
+                .get_group(EdgeGroup::MatchTargets(a))
+                .iter()
+                .position(|n| *n == b)
+                .is_some()
+        );
     }
 
     #[test]
