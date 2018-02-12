@@ -1,4 +1,5 @@
-use diagram::{Diagram, Edge, MatchTerm, MatchTermConstraint, MultiDiagram, Node, OutputTerm};
+use diagram::{Diagram, Edge, EdgeGroup, MatchTerm, MatchTermConstraint, MultiDiagram, Node,
+              OutputTerm};
 use mutation::{Mutation, Term};
 use node_index::NodeIndex;
 use std::iter;
@@ -22,9 +23,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             register,
         } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].constraint = MatchTermConstraint::Register(register);
@@ -37,9 +35,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             value,
         } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].constraint = MatchTermConstraint::Constant(value);
@@ -51,9 +46,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
         Mutation::SetConstraintFree {
             term: Term(node, term),
         } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].constraint = MatchTermConstraint::Free;
@@ -66,9 +58,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             register,
         } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             if let &mut Node::Match { ref mut terms, .. } = diagram.get_node_mut(node) {
                 if term < terms.len() {
                     terms[term].target = register;
@@ -78,71 +67,70 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             return None;
         }
         Mutation::RemoveNode { node } => {
-            if node.0 >= diagram.len() {
-                return None;
+            let was_root = diagram
+                .get_group(EdgeGroup::Roots)
+                .iter()
+                .position(|n| *n == node)
+                .is_some();
+            let match_sources = diagram.get_group(EdgeGroup::MatchSources(node)).to_owned();
+            let match_targets = diagram.get_group(EdgeGroup::MatchTargets(node)).to_owned();
+            let refute_sources = diagram.get_group(EdgeGroup::RefuteSources(node)).to_owned();
+            let refute_targets = diagram.get_group(EdgeGroup::RefuteTargets(node)).to_owned();
+
+            for target in match_targets
+                .iter()
+                .cloned()
+                .chain(refute_targets.iter().cloned())
+            {
+                for source in match_sources.iter().cloned() {
+                    diagram.insert_edge(Edge::Match { source, target });
+                }
+                for source in refute_sources.iter().cloned() {
+                    diagram.insert_edge(Edge::Refute { source, target });
+                }
             }
-            if node == diagram.get_root() {
-                return None;
+
+            if was_root {
+                for target in match_targets
+                    .iter()
+                    .cloned()
+                    .chain(refute_targets.iter().cloned())
+                {
+                    diagram.insert_edge(Edge::Root(target));
+                }
             }
-            let node_could_be_passthrough =
-                if let Node::Match { ref terms, .. } = *diagram.get_node(node) {
-                    terms.iter().all(|term| term.target.is_none())
-                } else {
-                    false
-                };
-            let mut had_sources = false;
-            let maybe_match = diagram.get_on_match(node);
-            let maybe_refute = diagram.get_on_refute(node);
-            if let Some(on_match) = maybe_match {
-                if let Some(match_sources) =
-                    diagram.get_match_sources(node).map(|srcs| srcs.to_owned())
-                {
-                    for src in match_sources {
-                        had_sources = true;
-                        diagram.set_on_match(src, on_match);
-                    }
-                }
-            } else {
-                if let Some(match_sources) =
-                    diagram.get_match_sources(node).map(|srcs| srcs.to_owned())
-                {
-                    for src in match_sources {
-                        had_sources = true;
-                        diagram.clear_on_match(src);
-                    }
-                }
-            };
-            if let Some(on_refute) = maybe_refute {
-                if let Some(refute_sources) =
-                    diagram.get_refute_sources(node).map(|srcs| srcs.to_owned())
-                {
-                    for src in refute_sources {
-                        had_sources = true;
-                        diagram.set_on_refute(src, on_refute);
-                    }
-                }
-            } else {
-                if let Some(refute_sources) =
-                    diagram.get_refute_sources(node).map(|srcs| srcs.to_owned())
-                {
-                    for src in refute_sources {
-                        had_sources = true;
-                        diagram.clear_on_refute(src);
-                    }
-                }
-            };
-            if maybe_match == maybe_refute && node_could_be_passthrough {
-                return Some(MutationResult {
-                    phenotype_could_have_changed: false,
-                    node_to_restart: None,
-                });
-            } else {
-                // TODO(zentner): Check for parallel sibling?
-                return Some(MutationResult {
-                    phenotype_could_have_changed: had_sources,
-                    node_to_restart: None,
+
+            for source in match_sources.iter().cloned() {
+                diagram.remove_edge(Edge::Match {
+                    source,
+                    target: node,
                 });
             }
+            for target in match_targets.iter().cloned() {
+                diagram.remove_edge(Edge::Match {
+                    source: node,
+                    target,
+                });
+            }
+            for source in refute_sources.iter().cloned() {
+                diagram.remove_edge(Edge::Refute {
+                    source,
+                    target: node,
+                });
+            }
+            for target in refute_targets.iter().cloned() {
+                diagram.remove_edge(Edge::Refute {
+                    source: node,
+                    target,
+                });
+            }
+
+            let had_sources = was_root || match_sources.len() != 0 || refute_sources.len() != 0;
+
+            return Some(MutationResult {
+                phenotype_could_have_changed: had_sources,
+                node_to_restart: None,
+            });
         }
         Mutation::InsertEdge { edge } => {
             diagram.insert_edge(edge);
@@ -155,9 +143,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             register,
         } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             if let Node::Output { ref mut terms, .. } = *diagram.get_node_mut(node) {
                 terms[term] = OutputTerm::Register(register);
                 Some(MutationResult {
@@ -172,9 +157,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             term: Term(node, term),
             value,
         } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             if let Node::Output { ref mut terms, .. } = *diagram.get_node_mut(node) {
                 terms[term] = OutputTerm::Constant(value);
                 Some(MutationResult {
@@ -186,9 +168,6 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
             }
         }
         Mutation::SetPredicate { node, predicate } => {
-            if node.0 >= diagram.len() {
-                return None;
-            }
             return match *diagram.get_node_mut(node) {
                 Node::Output {
                     predicate: ref mut p,
@@ -329,43 +308,15 @@ mod tests {
         println!("original diagram = {:#?}", diagram);
         let root = diagram.get_root();
         let a = context.node_name_to_info.get("a").unwrap().index;
+        let mutation_result = apply_mutation(&mut diagram, Mutation::RemoveNode { node: a });
+        println!("mutated diagram = {:#?}", diagram);
         assert_eq!(
-            apply_mutation(&mut diagram, Mutation::RemoveNode { node: a },),
+            mutation_result,
             Some(MutationResult {
                 phenotype_could_have_changed: true,
                 node_to_restart: None,
             })
         );
-        println!("mutated diagram = {:#?}", diagram);
-        let b = context.node_name_to_info.get("b").unwrap().index;
-        println!("root = {:?}", root);
-        assert_eq!(diagram.get_on_match(root), Some(b));
-        assert_eq!(diagram.get_on_match(root), Some(b));
-    }
-
-    #[test]
-    fn remove_node_passthrough() {
-        let (mut diagram, context) = parse_diagram(
-            r#"
-        root: @0(_ -> %0, _ -> %1) {
-          a: @1(_, _) {
-            b: output @2(%0, %1)
-          } { b }
-        } { a }
-        "#,
-            2,
-        ).unwrap();
-        println!("original diagram = {:#?}", diagram);
-        let root = diagram.get_root();
-        let a = context.node_name_to_info.get("a").unwrap().index;
-        assert_eq!(
-            apply_mutation(&mut diagram, Mutation::RemoveNode { node: a },),
-            Some(MutationResult {
-                phenotype_could_have_changed: false,
-                node_to_restart: None,
-            })
-        );
-        println!("mutated diagram = {:#?}", diagram);
         let b = context.node_name_to_info.get("b").unwrap().index;
         println!("root = {:?}", root);
         assert_eq!(diagram.get_on_match(root), Some(b));
@@ -384,8 +335,11 @@ mod tests {
         );
         let root = diagram.get_root();
         assert_eq!(
-            apply_mutation(&mut diagram, Mutation::RemoveNode { node: root },),
-            None
+            apply_mutation(&mut diagram, Mutation::RemoveNode { node: root }),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: None,
+            })
         );
     }
 
