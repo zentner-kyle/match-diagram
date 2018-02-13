@@ -104,8 +104,11 @@ impl StepProblem {
         if let Some(MutationResult {
             phenotype_could_have_changed,
             node_to_restart,
-        }) = apply_mutation(&mut individual.diagram, mutation)
-        {
+        }) = apply_mutation(
+            &mut individual.diagram,
+            mutation,
+            &mut individual.mutation_state,
+        ) {
             if phenotype_could_have_changed {
                 let original_fitness = individual.fitness;
                 self.rescore(individual, node_to_restart);

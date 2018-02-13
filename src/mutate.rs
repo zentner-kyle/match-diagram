@@ -1,5 +1,6 @@
 use diagram::{Diagram, Edge, EdgeGroup, MatchTerm, MatchTermConstraint, MultiDiagram, Node,
               OutputTerm};
+use gen_mutation::IndividualMutationState;
 use mutation::{Mutation, Term};
 use node_index::NodeIndex;
 use std::iter;
@@ -17,7 +18,11 @@ fn changed_node(node: NodeIndex) -> Option<MutationResult> {
     })
 }
 
-pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option<MutationResult> {
+pub fn apply_mutation<D: Diagram>(
+    diagram: &mut D,
+    mutation: Mutation,
+    state: &mut IndividualMutationState,
+) -> Option<MutationResult> {
     match mutation {
         Mutation::SetConstraintRegister {
             term: Term(node, term),
@@ -127,6 +132,8 @@ pub fn apply_mutation<D: Diagram>(diagram: &mut D, mutation: Mutation) -> Option
 
             let had_sources = was_root || match_sources.len() != 0 || refute_sources.len() != 0;
 
+            state.deleted_nodes.push(node);
+
             return Some(MutationResult {
                 phenotype_could_have_changed: had_sources,
                 node_to_restart: None,
@@ -218,6 +225,7 @@ mod tests {
                 term: Term(root, 0),
                 register: 0,
             },
+            &mut IndividualMutationState::new(),
         );
         assert_eq!(
             *diagram.get_node(root),
@@ -242,6 +250,7 @@ mod tests {
                 term: Term(root, 0),
                 value: Value::Symbol(0),
             },
+            &mut IndividualMutationState::new(),
         );
         assert_eq!(
             *diagram.get_node(root),
@@ -265,6 +274,7 @@ mod tests {
             Mutation::SetConstraintFree {
                 term: Term(root, 0),
             },
+            &mut IndividualMutationState::new(),
         );
         assert_eq!(
             *diagram.get_node(root),
@@ -289,6 +299,7 @@ mod tests {
                 term: Term(root, 0),
                 register: None,
             },
+            &mut IndividualMutationState::new(),
         );
         assert_eq!(*diagram.get_node(root), node_literal("@0(_, _ -> %1)"));
     }
@@ -308,7 +319,11 @@ mod tests {
         println!("original diagram = {:#?}", diagram);
         let root = diagram.get_root();
         let a = context.node_name_to_info.get("a").unwrap().index;
-        let mutation_result = apply_mutation(&mut diagram, Mutation::RemoveNode { node: a });
+        let mutation_result = apply_mutation(
+            &mut diagram,
+            Mutation::RemoveNode { node: a },
+            &mut IndividualMutationState::new(),
+        );
         println!("mutated diagram = {:#?}", diagram);
         assert_eq!(
             mutation_result,
@@ -335,7 +350,11 @@ mod tests {
         );
         let root = diagram.get_root();
         assert_eq!(
-            apply_mutation(&mut diagram, Mutation::RemoveNode { node: root }),
+            apply_mutation(
+                &mut diagram,
+                Mutation::RemoveNode { node: root },
+                &mut IndividualMutationState::new(),
+            ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
                 node_to_restart: None,
@@ -361,7 +380,8 @@ mod tests {
                 &mut diagram,
                 Mutation::InsertEdge {
                     edge: Edge::Root(a),
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
@@ -399,7 +419,8 @@ mod tests {
                         source: a,
                         target: a,
                     },
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
@@ -444,7 +465,8 @@ mod tests {
                         source: a,
                         target: a,
                     },
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
@@ -482,7 +504,8 @@ mod tests {
                 Mutation::SetOutputRegister {
                     term: Term(root, 0),
                     register: 1,
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
@@ -507,7 +530,8 @@ mod tests {
                 Mutation::SetOutputConstant {
                     term: Term(root, 0),
                     value: Value::Symbol(1),
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
@@ -532,7 +556,8 @@ mod tests {
                 Mutation::SetPredicate {
                     node: root,
                     predicate: Predicate(0),
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,
@@ -559,7 +584,8 @@ mod tests {
                 Mutation::SetPredicate {
                     node: root,
                     predicate: Predicate(1),
-                }
+                },
+                &mut IndividualMutationState::new(),
             ),
             Some(MutationResult {
                 phenotype_could_have_changed: true,

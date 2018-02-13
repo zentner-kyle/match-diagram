@@ -46,6 +46,40 @@ impl Edge {
             Edge::Match { source, .. } | Edge::Refute { source, .. } => Some(source),
         }
     }
+
+    pub fn nodes(self) -> MaybeNodePair {
+        match self {
+            Edge::Root(node) => MaybeNodePair::One(node),
+            Edge::Match { source, target } | Edge::Refute { source, target } => {
+                MaybeNodePair::Two(source, target)
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum MaybeNodePair {
+    Zero,
+    One(NodeIndex),
+    Two(NodeIndex, NodeIndex),
+}
+
+impl Iterator for MaybeNodePair {
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<NodeIndex> {
+        match *self {
+            MaybeNodePair::Zero => None,
+            MaybeNodePair::One(node) => {
+                *self = MaybeNodePair::Zero;
+                Some(node)
+            }
+            MaybeNodePair::Two(first, second) => {
+                *self = MaybeNodePair::One(second);
+                Some(first)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
