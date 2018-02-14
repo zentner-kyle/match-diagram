@@ -4,8 +4,9 @@ use std::cmp::{Ordering, PartialOrd};
 use std::iter;
 
 use database::Database;
-use diagram::{Diagram, MultiDiagram, Node, OutputTerm};
+use diagram::{Diagram, DiagramSpace, MultiDiagram, Node, OutputTerm};
 use evaluation::Evaluation;
+use frame::Frame;
 use gen_mutation::{GenMutation, IndividualMutationState, UniformMutationContext};
 use graph_diagram::GraphDiagram;
 use mutate::{apply_mutation, MutationResult};
@@ -54,7 +55,8 @@ impl DiagramIndividual {
 #[derive(Clone, Debug)]
 pub struct StepProblem {
     samples: Vec<(Database, Database)>,
-    mutation_context: UniformMutationContext,
+    frame: Frame,
+    space: DiagramSpace,
     num_registers: usize,
     num_nodes: usize,
     num_0_terms: usize,
@@ -96,11 +98,17 @@ impl StepProblem {
     }
 
     fn mutate_and_rescore<R: Rng>(&self, individual: &mut DiagramIndividual, rng: &mut R) -> bool {
-        let mutation = self.mutation_context.gen_mutation(
-            &individual.diagram,
-            &mut individual.mutation_state,
-            rng,
+        let context = UniformMutationContext::new(
+            self.space.num_nodes,
+            self.space.num_terms,
+            self.space.num_registers,
+            self.frame.values.len() as u64,
+            self.frame.num_terms_for_predicate.len() as u64,
+            &self.frame,
+            &self.space,
         );
+        let mutation =
+            context.gen_mutation(&individual.diagram, &mut individual.mutation_state, rng);
         if let Some(MutationResult {
             phenotype_could_have_changed,
             node_to_restart,
@@ -185,17 +193,21 @@ mod tests {
                     database_literal(vec![(Predicate(1), vec![Value::Symbol(2)])]),
                 ),
             ],
-            mutation_context: UniformMutationContext::new(
-                3,
-                1,
-                1,
-                3,
-                2,
-                [(Predicate(0), 1), (Predicate(1), 0)]
+            frame: Frame {
+                values: [Value::Symbol(0), Value::Symbol(1), Value::Symbol(2)]
                     .iter()
                     .cloned()
                     .collect(),
-            ),
+                num_terms_for_predicate: [(Predicate(0), 1), (Predicate(1), 0)]
+                    .iter()
+                    .cloned()
+                    .collect(),
+            },
+            space: DiagramSpace {
+                num_nodes: 3,
+                num_terms: 1,
+                num_registers: 1,
+            },
             num_registers: 1,
             num_nodes: 2,
             num_0_terms: 1,

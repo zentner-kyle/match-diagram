@@ -154,3 +154,10 @@ pub trait Diagram: MultiDiagram {
 
     fn get_num_registers(&self) -> usize;
 }
+
+#[derive(Debug, Clone)]
+pub struct DiagramSpace {
+    pub num_nodes: usize,
+    pub num_registers: usize,
+    pub num_terms: usize,
+}

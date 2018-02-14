@@ -155,3 +155,16 @@ a good idea, since the number of input facts is very small.
 It actually works better with the arrows going the other way.
 
 
+The current organization of everything except the diagrams themselves are
+terrible. The predicate table gets copied around a bunch of places. We should
+draw up generally how information flows.
+Algorithm overview:
+  1. We get a problem statement.
+  2. We extract the space of input and output facts from the problem.
+  3. We seed the evolutionary algorithm
+  4. Each individual in the population is initially evaluated.
+  5. In a loop, we do the following:
+    1. We run some analysis to bound the mutation space.
+    2. Mutations are applied to produce a larger population.
+    3. The larger population is evaluated.
+    4. The best evaluated individuals are kept.

@@ -1,10 +1,11 @@
 use rand::Rng;
+use std::collections::HashMap;
 
-use diagram::{Edge, EdgeGroup, MultiDiagram};
+use diagram::{DiagramSpace, Edge, EdgeGroup, MultiDiagram};
+use frame::Frame;
 use mutation::{Mutation, Term};
 use node_index::NodeIndex;
 use predicate::Predicate;
-use std::collections::HashMap;
 use value::Value;
 
 #[derive(Debug, Clone)]
@@ -21,13 +22,14 @@ impl IndividualMutationState {
 }
 
 #[derive(Debug, Clone)]
-pub struct UniformMutationContext {
+pub struct UniformMutationContext<'f, 's> {
     num_nodes: usize,
     num_terms: usize,
     num_registers: usize,
     num_symbols: u64,
     num_predicates: u64,
-    num_terms_for_predicate: HashMap<Predicate, usize>,
+    frame: &'f Frame,
+    space: &'s DiagramSpace,
 }
 
 pub trait GenMutation {
@@ -55,14 +57,15 @@ fn nonzero_u64(value: u64) -> u64 {
     }
 }
 
-impl UniformMutationContext {
+impl<'f, 's> UniformMutationContext<'f, 's> {
     pub fn new(
         num_nodes: usize,
         num_terms: usize,
         num_registers: usize,
         num_symbols: u64,
         num_predicates: u64,
-        num_terms_for_predicate: HashMap<Predicate, usize>,
+        frame: &'f Frame,
+        space: &'s DiagramSpace,
     ) -> Self {
         UniformMutationContext {
             num_nodes: nonzero(num_nodes),
@@ -70,7 +73,8 @@ impl UniformMutationContext {
             num_registers: nonzero(num_registers),
             num_symbols: nonzero_u64(num_symbols),
             num_predicates: nonzero_u64(num_predicates),
-            num_terms_for_predicate,
+            frame,
+            space,
         }
     }
 
@@ -150,7 +154,7 @@ impl UniformMutationContext {
     }
 }
 
-impl GenMutation for UniformMutationContext {
+impl<'f, 's> GenMutation for UniformMutationContext<'f, 's> {
     fn gen_mutation<D: MultiDiagram, R: Rng>(
         &self,
         diagram: &D,
