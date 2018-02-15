@@ -98,17 +98,11 @@ impl StepProblem {
     }
 
     fn mutate_and_rescore<R: Rng>(&self, individual: &mut DiagramIndividual, rng: &mut R) -> bool {
-        let context = UniformMutationContext::new(
-            self.space.num_nodes,
-            self.space.num_terms,
-            self.space.num_registers,
-            self.frame.values.len() as u64,
-            self.frame.num_terms_for_predicate.len() as u64,
-            &self.frame,
-            &self.space,
-        );
-        let mutation =
-            context.gen_mutation(&individual.diagram, &mut individual.mutation_state, rng);
+        let mutation = {
+            let context =
+                UniformMutationContext::new(&self.frame, &self.space, &individual.diagram);
+            context.gen_mutation(&mut individual.mutation_state, rng)
+        };
         if let Some(MutationResult {
             phenotype_could_have_changed,
             node_to_restart,

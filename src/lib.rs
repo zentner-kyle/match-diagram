@@ -19,6 +19,7 @@ mod mutation;
 mod node_index;
 mod parse;
 mod predicate;
+mod rand_utils;
 mod registers;
 mod simple_query;
 mod step_problem;
