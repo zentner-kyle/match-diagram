@@ -192,6 +192,25 @@ pub fn apply_mutation<D: Diagram>(
                 }
             };
         }
+        Mutation::InsertOutputNode {
+            group,
+            predicate,
+            terms,
+        } => {
+            let node = Node::Output { predicate, terms };
+            let node_index = if let Some(deleted) = state.deleted_nodes.pop() {
+                *diagram.get_node_mut(deleted) = node;
+                deleted
+            } else {
+                diagram.insert_node(node)
+            };
+            let edge = group.edge_to(node_index);
+            diagram.insert_edge(edge);
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: edge.source(),
+            })
+        }
     }
 }
 
@@ -595,6 +614,34 @@ mod tests {
         assert_eq!(
             *diagram.get_node(root),
             node_literal("@1(_ -> %0, _ -> %1)")
+        );
+    }
+
+    #[test]
+    fn insert_output_node() {
+        let mut diagram = GraphDiagram::new(1);
+        assert_eq!(
+            apply_mutation(
+                &mut diagram,
+                Mutation::InsertOutputNode {
+                    group: EdgeGroup::Roots,
+                    predicate: Predicate(1),
+                    terms: vec![OutputTerm::Constant(Value::Symbol(2))],
+                },
+                &mut IndividualMutationState::new()
+            ),
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: None,
+            })
+        );
+        assert_eq!(diagram.len(), 1);
+        assert_eq!(
+            diagram.get_node(NodeIndex(0)),
+            &Node::Output {
+                predicate: Predicate(1),
+                terms: vec![OutputTerm::Constant(Value::Symbol(2))],
+            }
         );
     }
 }

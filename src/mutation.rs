@@ -1,4 +1,4 @@
-use diagram::{Edge, EdgeGroup};
+use diagram::{Edge, EdgeGroup, OutputTerm};
 use node_index::NodeIndex;
 use predicate::Predicate;
 use value::Value;
@@ -66,5 +66,10 @@ pub enum Mutation {
     SetPredicate {
         node: NodeIndex,
         predicate: Predicate,
+    },
+    InsertOutputNode {
+        group: EdgeGroup,
+        predicate: Predicate,
+        terms: Vec<OutputTerm>,
     },
 }

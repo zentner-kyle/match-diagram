@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::collections::HashMap;
 
-use diagram::{DiagramSpace, Edge, EdgeGroup, MultiDiagram};
+use diagram::{DiagramSpace, Edge, EdgeGroup, MultiDiagram, OutputTerm};
 use frame::Frame;
 use mutation::{Mutation, Term};
 use node_index::NodeIndex;
@@ -114,6 +114,24 @@ impl<'f, 's, 'd, D: 'd + MultiDiagram> UniformMutationContext<'f, 's, 'd, D> {
     fn gen_predicate<R: Rng>(&self, rng: &mut R) -> Predicate {
         Predicate(rng.gen_range(0, self.frame.num_terms_for_predicate.len() as u64))
     }
+
+    fn gen_output_terms<R: Rng>(&self, rng: &mut R, predicate: Predicate) -> Vec<OutputTerm> {
+        let num_terms = *self.frame
+            .num_terms_for_predicate
+            .get(&predicate)
+            .expect("should have only generated a known predicate");
+        let mut output = Vec::with_capacity(num_terms);
+        for _ in 0..num_terms {
+            if rng.gen() {
+                let register = self.gen_register(rng);
+                output.push(OutputTerm::Register(register));
+            } else {
+                let value = self.gen_value(rng);
+                output.push(OutputTerm::Constant(value));
+            }
+        }
+        output
+    }
 }
 
 impl<'f, 's, 'd, D: 'd + MultiDiagram> GenMutation for UniformMutationContext<'f, 's, 'd, D> {
@@ -156,6 +174,14 @@ impl<'f, 's, 'd, D: 'd + MultiDiagram> GenMutation for UniformMutationContext<'f
             8 => Mutation::RemoveNode {
                 node: self.gen_node(rng, state),
             },
+            9 => {
+                let predicate = self.gen_predicate(rng);
+                Mutation::InsertOutputNode {
+                    group: self.gen_group(rng, state),
+                    predicate,
+                    terms: self.gen_output_terms(rng, predicate),
+                }
+            }
             _ => unreachable!(),
         }
     }
