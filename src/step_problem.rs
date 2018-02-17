@@ -192,7 +192,7 @@ mod tests {
             lambda: 100,
         };
         let mut engine = Engine::new(problem, strategy, rng);
-        for i in 0..20 {
+        for i in 0..40 {
             if i % 10 == 0 {
                 let fitest = engine.fitest();
                 println!("fitest = {:#?}", fitest.diagram);

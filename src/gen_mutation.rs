@@ -89,6 +89,19 @@ impl<'f, 's, 'd, D: 'd + MultiDiagram> UniformMutationContext<'f, 's, 'd, D> {
         }
     }
 
+    fn gen_match_node<R: Rng>(
+        &self,
+        rng: &mut R,
+        state: &mut IndividualMutationState,
+    ) -> Option<NodeIndex> {
+        let node = self.gen_node(rng, state)?;
+        if self.diagram.get_node(node).is_match() {
+            Some(node)
+        } else {
+            None
+        }
+    }
+
     fn gen_term<R: Rng>(&self, rng: &mut R, state: &mut IndividualMutationState) -> Option<Term> {
         let register = rng.gen_range(0, self.space.num_terms);
         Some(Term(self.gen_node(rng, state)?, register))
@@ -109,11 +122,11 @@ impl<'f, 's, 'd, D: 'd + MultiDiagram> UniformMutationContext<'f, 's, 'd, D> {
         match rng.gen_range(0, 3) {
             0 => Some(Edge::Root(self.gen_node(rng, state)?)),
             1 => Some(Edge::Match {
-                source: self.gen_node(rng, state)?,
+                source: self.gen_match_node(rng, state)?,
                 target: self.gen_node(rng, state)?,
             }),
             2 => Some(Edge::Refute {
-                source: self.gen_node(rng, state)?,
+                source: self.gen_match_node(rng, state)?,
                 target: self.gen_node(rng, state)?,
             }),
             _ => unreachable!(),

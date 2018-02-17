@@ -128,6 +128,16 @@ pub enum Node {
     },
 }
 
+impl Node {
+    pub fn is_match(&self) -> bool {
+        if let &Node::Match { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 pub trait MultiDiagram: fmt::Debug {
     fn insert_node(&mut self, node: Node) -> NodeIndex;
 
