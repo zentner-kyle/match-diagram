@@ -88,10 +88,10 @@ pub fn apply_mutation<D: Diagram>(
                 .chain(refute_targets.iter().cloned())
             {
                 for source in match_sources.iter().cloned() {
-                    diagram.insert_edge(Edge::Match { source, target });
+                    diagram.insert_edge_if_not_present(Edge::Match { source, target });
                 }
                 for source in refute_sources.iter().cloned() {
-                    diagram.insert_edge(Edge::Refute { source, target });
+                    diagram.insert_edge_if_not_present(Edge::Refute { source, target });
                 }
             }
 
@@ -101,30 +101,30 @@ pub fn apply_mutation<D: Diagram>(
                     .cloned()
                     .chain(refute_targets.iter().cloned())
                 {
-                    diagram.insert_edge(Edge::Root(target));
+                    diagram.insert_edge_if_not_present(Edge::Root(target));
                 }
             }
 
             for source in match_sources.iter().cloned() {
-                diagram.remove_edge(Edge::Match {
+                diagram.remove_edge_if_present(Edge::Match {
                     source,
                     target: node,
                 });
             }
             for target in match_targets.iter().cloned() {
-                diagram.remove_edge(Edge::Match {
+                diagram.remove_edge_if_present(Edge::Match {
                     source: node,
                     target,
                 });
             }
             for source in refute_sources.iter().cloned() {
-                diagram.remove_edge(Edge::Refute {
+                diagram.remove_edge_if_present(Edge::Refute {
                     source,
                     target: node,
                 });
             }
             for target in refute_targets.iter().cloned() {
-                diagram.remove_edge(Edge::Refute {
+                diagram.remove_edge_if_present(Edge::Refute {
                     source: node,
                     target,
                 });
@@ -140,7 +140,7 @@ pub fn apply_mutation<D: Diagram>(
             });
         }
         Mutation::InsertEdge { edge } => {
-            diagram.insert_edge(edge);
+            diagram.insert_edge_if_not_present(edge);
             return Some(MutationResult {
                 phenotype_could_have_changed: true,
                 node_to_restart: edge.source(),
@@ -198,14 +198,33 @@ pub fn apply_mutation<D: Diagram>(
             terms,
         } => {
             let node = Node::Output { predicate, terms };
-            let node_index = if let Some(deleted) = state.deleted_nodes.pop() {
-                *diagram.get_node_mut(deleted) = node;
-                deleted
-            } else {
-                diagram.insert_node(node)
-            };
+            let node_index = state.insert_node(diagram, node);
             let edge = group.edge_to(node_index);
-            diagram.insert_edge(edge);
+            // TODO(zentner): Remove this, it should just be diagram.insert_edge(edge)
+            diagram.insert_edge_if_not_present(edge);
+            Some(MutationResult {
+                phenotype_could_have_changed: true,
+                node_to_restart: edge.source(),
+            })
+        }
+        Mutation::InsertMatchNode {
+            edge,
+            predicate,
+            terms,
+        } => {
+            let node = Node::Match { predicate, terms };
+            let node_index = state.insert_node(diagram, node);
+            let edge_group_in = edge.forward_group();
+            // TODO(zentner): Remove this, it should just be diagram.insert_edge(edge)
+            diagram.insert_edge_if_not_present(edge_group_in.edge_to(node_index));
+            diagram.insert_edge_if_not_present(Edge::Match {
+                source: node_index,
+                target: edge.target(),
+            });
+            diagram.insert_edge_if_not_present(Edge::Refute {
+                source: node_index,
+                target: edge.target(),
+            });
             Some(MutationResult {
                 phenotype_could_have_changed: true,
                 node_to_restart: edge.source(),

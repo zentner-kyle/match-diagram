@@ -47,12 +47,27 @@ impl Edge {
         }
     }
 
+    pub fn target(self) -> NodeIndex {
+        match self {
+            Edge::Root(target) => target,
+            Edge::Match { target, .. } | Edge::Refute { target, .. } => target,
+        }
+    }
+
     pub fn nodes(self) -> MaybeNodePair {
         match self {
             Edge::Root(node) => MaybeNodePair::One(node),
             Edge::Match { source, target } | Edge::Refute { source, target } => {
                 MaybeNodePair::Two(source, target)
             }
+        }
+    }
+
+    pub fn forward_group(self) -> EdgeGroup {
+        match self {
+            Edge::Root(_) => EdgeGroup::Roots,
+            Edge::Match { source, .. } => EdgeGroup::MatchTargets(source),
+            Edge::Refute { source, .. } => EdgeGroup::RefuteTargets(source),
         }
     }
 }
@@ -129,6 +144,24 @@ pub trait MultiDiagram: fmt::Debug {
     fn remove_edge(&mut self, edge: Edge);
 
     fn len(&self) -> usize;
+
+    fn insert_edge_if_not_present(&mut self, edge: Edge) -> bool {
+        if self.edge_exists(edge) {
+            true
+        } else {
+            self.insert_edge(edge);
+            false
+        }
+    }
+
+    fn remove_edge_if_present(&mut self, edge: Edge) -> bool {
+        if self.edge_exists(edge) {
+            self.remove_edge(edge);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 pub trait Diagram: MultiDiagram {

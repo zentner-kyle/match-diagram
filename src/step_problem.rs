@@ -23,23 +23,9 @@ pub struct DiagramIndividual {
 }
 
 impl DiagramIndividual {
-    fn blank(
-        num_evaluations: usize,
-        num_registers: usize,
-        num_nodes: usize,
-        num_0_terms: usize,
-    ) -> DiagramIndividual {
-        let mut diagram = GraphDiagram::new(num_registers);
+    fn blank(num_evaluations: usize, num_registers: usize) -> DiagramIndividual {
+        let diagram = GraphDiagram::new(num_registers);
 
-        for _ in 0..num_nodes {
-            diagram.insert_node(Node::Output {
-                predicate: Predicate(0),
-                terms: iter::repeat(OutputTerm::Constant(Value::Symbol(0)))
-                    .take(num_0_terms)
-                    .collect(),
-            });
-        }
-        diagram.set_root(NodeIndex(0));
         let evaluations = iter::repeat(Evaluation::new())
             .take(num_evaluations)
             .collect();
@@ -129,14 +115,7 @@ impl Problem for StepProblem {
         R: Rng,
     {
         (0..count)
-            .map(|_| {
-                DiagramIndividual::blank(
-                    self.samples.len(),
-                    self.num_registers,
-                    self.num_nodes,
-                    self.num_0_terms,
-                )
-            })
+            .map(|_| DiagramIndividual::blank(self.samples.len(), self.num_registers))
             .collect()
     }
 
@@ -170,6 +149,7 @@ mod tests {
     use rand::XorShiftRng;
     use value::Value;
 
+    #[test]
     fn evolve_simple_copy() {
         let rng = XorShiftRng::from_seed([0xba, 0xeb, 0xae, 0xee]);
         let problem = StepProblem {
@@ -192,7 +172,7 @@ mod tests {
                     .iter()
                     .cloned()
                     .collect(),
-                num_terms_for_predicate: [(Predicate(0), 1), (Predicate(1), 0)]
+                num_terms_for_predicate: [(Predicate(0), 1), (Predicate(1), 1)]
                     .iter()
                     .cloned()
                     .collect(),
@@ -206,12 +186,13 @@ mod tests {
             num_nodes: 2,
             num_0_terms: 1,
         };
+        // Note that the numbers here can be increased if they cause test failures.
         let strategy = Strategy::MuLambda {
-            mu: 100,
-            lambda: 200,
+            mu: 50,
+            lambda: 100,
         };
         let mut engine = Engine::new(problem, strategy, rng);
-        for i in 0..50 {
+        for i in 0..20 {
             if i % 10 == 0 {
                 let fitest = engine.fitest();
                 println!("fitest = {:#?}", fitest.diagram);

@@ -161,9 +161,7 @@ impl MultiDiagram for GraphDiagram {
     }
 
     fn insert_edge(&mut self, edge: Edge) {
-        if self.edge_exists(edge) {
-            return;
-        }
+        assert!(!self.edge_exists(edge));
         match edge {
             Edge::Root(node) => {
                 assert!(node.0 < self.len());
