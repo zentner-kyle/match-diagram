@@ -214,6 +214,7 @@ impl MultiDiagram for GraphDiagram {
                 }
             }
         }
+        assert!(!self.edge_exists(edge));
     }
 
     fn len(&self) -> usize {

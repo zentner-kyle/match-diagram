@@ -77,10 +77,16 @@ pub fn apply_mutation<D: Diagram>(
                 .iter()
                 .position(|n| *n == node)
                 .is_some();
-            let match_sources = diagram.get_group(EdgeGroup::MatchSources(node)).to_owned();
-            let match_targets = diagram.get_group(EdgeGroup::MatchTargets(node)).to_owned();
-            let refute_sources = diagram.get_group(EdgeGroup::RefuteSources(node)).to_owned();
-            let refute_targets = diagram.get_group(EdgeGroup::RefuteTargets(node)).to_owned();
+
+            let without_node = |group: &[NodeIndex]| {
+                let result: Vec<NodeIndex> =
+                    group.iter().map(|n| *n).filter(|n| *n != node).collect();
+                result
+            };
+            let match_sources = without_node(diagram.get_group(EdgeGroup::MatchSources(node)));
+            let match_targets = without_node(diagram.get_group(EdgeGroup::MatchTargets(node)));
+            let refute_sources = without_node(diagram.get_group(EdgeGroup::RefuteSources(node)));
+            let refute_targets = without_node(diagram.get_group(EdgeGroup::RefuteTargets(node)));
 
             for target in match_targets
                 .iter()
@@ -103,7 +109,18 @@ pub fn apply_mutation<D: Diagram>(
                 {
                     diagram.insert_edge_if_not_present(Edge::Root(target));
                 }
+                diagram.remove_edge(Edge::Root(node));
             }
+
+            diagram.remove_edge_if_present(Edge::Match {
+                source: node,
+                target: node,
+            });
+
+            diagram.remove_edge_if_present(Edge::Refute {
+                source: node,
+                target: node,
+            });
 
             for source in match_sources.iter().cloned() {
                 diagram.remove_edge_if_present(Edge::Match {
@@ -133,6 +150,12 @@ pub fn apply_mutation<D: Diagram>(
             let had_sources = was_root || match_sources.len() != 0 || refute_sources.len() != 0;
 
             state.deleted_nodes.push(node);
+
+            assert!(!diagram.edge_exists(Edge::Root(node)));
+            assert!(diagram.get_group(EdgeGroup::MatchTargets(node)).len() == 0);
+            assert!(diagram.get_group(EdgeGroup::MatchSources(node)).len() == 0);
+            assert!(diagram.get_group(EdgeGroup::RefuteTargets(node)).len() == 0);
+            assert!(diagram.get_group(EdgeGroup::RefuteSources(node)).len() == 0);
 
             return Some(MutationResult {
                 phenotype_could_have_changed: had_sources,
@@ -200,8 +223,7 @@ pub fn apply_mutation<D: Diagram>(
             let node = Node::Output { predicate, terms };
             let node_index = state.insert_node(diagram, node);
             let edge = group.edge_to(node_index);
-            // TODO(zentner): Remove this, it should just be diagram.insert_edge(edge)
-            diagram.insert_edge_if_not_present(edge);
+            diagram.insert_edge(edge);
             Some(MutationResult {
                 phenotype_could_have_changed: true,
                 node_to_restart: edge.source(),
@@ -215,9 +237,8 @@ pub fn apply_mutation<D: Diagram>(
             let node = Node::Match { predicate, terms };
             let node_index = state.insert_node(diagram, node);
             let edge_group_in = edge.forward_group();
-            // TODO(zentner): Remove this, it should just be diagram.insert_edge(edge)
-            diagram.insert_edge_if_not_present(edge_group_in.edge_to(node_index));
-            diagram.insert_edge_if_not_present(Edge::Match {
+            diagram.insert_edge(edge_group_in.edge_to(node_index));
+            diagram.insert_edge(Edge::Match {
                 source: node_index,
                 target: edge.target(),
             });
